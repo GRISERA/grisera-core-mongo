@@ -100,6 +100,8 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
 
         Args:
             dataset_name (str): name of dataset
+            query: Query to mongo api. Empty by default.
+
         Returns:
             Result of request as list of appearances objects
         """

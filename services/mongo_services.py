@@ -5,7 +5,7 @@ from activity.activity_service_mongodb import ActivityServiceMongoDB
 from appearance.appearance_service_mongodb import AppearanceServiceMongoDB
 from arrangement.arrangement_service_mongodb import ArrangementServiceMongoDB
 # from dataset.dataset_service_mongodb import DatasetServiceMongoDB
-# from experiment.experiment_service_mongodb import ExperimentServiceMongoDB
+from experiment.experiment_service_mongodb import ExperimentServiceMongoDB
 # from observable_information.observable_information_service_mongodb import (
 #     ObservableInformationServiceMongoDB,
 # )
@@ -74,7 +74,7 @@ class MongoServiceFactory(ServiceFactory):
         self.arrangement_service = ArrangementServiceMongoDB()
         # self.activity_execution_service = ActivityExecutionServiceMongoDB()
         self.activity_service = ActivityServiceMongoDB()
-        # self.experiment_service = ExperimentServiceMongoDB()
+        self.experiment_service = ExperimentServiceMongoDB()
         # self.scenario_service = ScenarioServiceMongoDB()
 
         service_pairs = [
@@ -123,8 +123,7 @@ class MongoServiceFactory(ServiceFactory):
         return self.channel_service
 
     def get_experiment_service(self) -> ExperimentService:
-        pass
-        #        return self.experiment_service
+        return self.experiment_service
 
     def get_life_activity_service(self) -> LifeActivityService:
         return self.life_activity_service
