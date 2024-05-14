@@ -15,7 +15,7 @@ from grisera import ServiceFactory
 from channel.channel_service_mongodb import ChannelServiceMongoDB
 from life_activity.life_activity_service_mongodb import LifeActivityServiceMongoDB
 # from measure.measure_service_mongodb import MeasureServiceMongoDB
-# from measure_name.measure_name_service_mongodb import MeasureNameServiceMongoDB
+from measure_name.measure_name_service_mongodb import MeasureNameServiceMongoDB
 # from modality.modality_service_mongodb import ModalityServiceMongoDB
 # from participant.participant_service_mongodb import ParticipantServiceMongoDB
 # from participant_state.participant_state_service_mongodb import (
@@ -65,7 +65,7 @@ class MongoServiceFactory(ServiceFactory):
         self.life_activity_service = LifeActivityServiceMongoDB()
         # self.time_series_service = TimeSeriesServiceMongoDB()
         # self.measure_service = MeasureServiceMongoDB()
-        # self.measure_name_service = MeasureNameServiceMongoDB()
+        self.measure_name_service = MeasureNameServiceMongoDB()
         # self.participation_service = ParticipationServiceMongoDB()
         # self.participant_service = ParticipantServiceMongoDB()
         # self.participant_state_service = ParticipantStateServiceMongoDB()
@@ -133,8 +133,7 @@ class MongoServiceFactory(ServiceFactory):
         #        return self.measure_service
 
     def get_measure_name_service(self) -> MeasureNameService:
-        pass
-        #        return self.measure_name_service
+        return self.measure_name_service
 
     def get_modality_service(self) -> ModalityService:
         pass

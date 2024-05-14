@@ -22,7 +22,7 @@ from services.mongo_service import service as mongo_service
 # from grisera import time_series_router
 # from grisera import registered_data_router
 # from grisera import scenario_router
-# from grisera import measure_name_router
+from grisera import measure_name_router
 from grisera import channel_router
 from setup import SetupNodes
 import os
@@ -42,7 +42,7 @@ app.include_router(channel_router)
 app.include_router(experiment_router)
 app.include_router(life_activity_router)
 # app.include_router(measure_router)
-# app.include_router(measure_name_router)
+app.include_router(measure_name_router)
 # app.include_router(modality_router)
 # app.include_router(observable_information_router)
 # app.include_router(participant_router)
