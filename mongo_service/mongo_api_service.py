@@ -4,6 +4,7 @@ import pymongo
 from bson import ObjectId
 from datetime import datetime, timezone
 
+
 from grisera import (
     SignalIn,
     SignalValueNodesIn,
@@ -32,28 +33,34 @@ class MongoApiService:
         Connect to MongoDB database
         """
         self.db = db
+        self.client = client
 
-    def create_document(self, data_in: BaseModel):
+    #ok
+    def create_document(self, data_in: BaseModel, dataset_name: str):
         """
         Create new document from model object.
         """
         collection_name = get_collection_name(type(data_in))
         data_as_dict = data_in.dict()
-        return self.create_document_from_dict(data_as_dict, collection_name)
+        return self.create_document_from_dict(data_as_dict, collection_name, dataset_name)
 
-    def create_document_from_dict(self, document_dict: dict, collection_name: str):
+    # ok
+    def create_document_from_dict(self, document_dict: dict, collection_name: str, dataset_name: str):
         """
         Create new document from a dictionary. Id fields are converted to ObjectId type.
         """
         self._fix_input_ids(document_dict)
-        created_id = self.db[collection_name].insert_one(document_dict).inserted_id
+        db = self.client[dataset_name]
+        created_id = db[collection_name].insert_one(document_dict).inserted_id
         return str(created_id)
 
-    def get_document(self, id: Union[str, int], collection_name: str, *args, **kwargs):
+    #ok
+    def get_document(self, id: Union[str, int], collection_name: str, dataset_name: str, *args, **kwargs):
         """
         Load single document. Output id fields are converted from ObjectId type to str.
         """
-        result_dict = self.db[collection_name].find_one(
+        db = self.client[dataset_name]
+        result_dict = db[collection_name].find_one(
             {self.MONGO_ID_FIELD: ObjectId(id)}, *args, **kwargs
         )
 
@@ -66,39 +73,48 @@ class MongoApiService:
         self._update_mongo_output_id(result_dict)
         return result_dict
 
-    def get_documents(self, collection_name: str, query: dict = {}, *args, **kwargs):
+    #ok
+    def get_documents(self, collection_name: str, dataset_name: str, query: dict = {}, *args, **kwargs):
         """
         Load many documents. Output id fields are converted from ObjectId type to str.
         """
+        if dataset_name == "":
+            dataset_name = mongo_database_name
+
         self._fix_input_ids(query)
-        results = list(self.db[collection_name].find(query, *args, **kwargs))
+        db = self.client[dataset_name]
+        results = list(db[collection_name].find(query, *args, **kwargs))
 
         [self._update_mongo_output_id(result) for result in results]
 
         return results
 
-    def update_document(self, id: Union[str, int], data_to_update: BaseModel):
+    #ok
+    def update_document(self, id: Union[str, int], data_to_update: BaseModel, dataset_name: str):
         """
         Update document.
         """
         collection_name = get_collection_name(type(data_to_update))
         data_as_dict = data_to_update.dict()
-        self.update_document_with_dict(collection_name, id, data_as_dict)
+        self.update_document_with_dict(collection_name, id, data_as_dict, dataset_name)
 
+    #ok
     def update_document_with_dict(
-        self, collection_name: str, id: Union[str, int], new_document: dict
+        self, collection_name: str, id: Union[str, int], new_document: dict, dataset_name: str
     ):
         """
         Update document with new document as dict. Id fields are converted to ObjectId type.
         """
         self._update_mongo_input_id(new_document)
         id = ObjectId(id)
-        self.db[collection_name].replace_one(
+        db = self.client[dataset_name]
+        db[collection_name].replace_one(
             {self.MONGO_ID_FIELD: id},
             new_document,
         )
 
-    def delete_document(self, object_to_delete: BaseModel):
+    #ok
+    def delete_document(self, object_to_delete: BaseModel, dataset_name: str):
         """
         Delete document in collection. Given model must have id field.
         """
@@ -109,7 +125,8 @@ class MongoApiService:
             )
         id = ObjectId(id_str)
         collection_name = get_collection_name(type(object_to_delete))
-        self.db[collection_name].delete_one({self.MONGO_ID_FIELD: id})
+        db = self.client[dataset_name]
+        db[collection_name].delete_one({self.MONGO_ID_FIELD: id})
         return id
 
     def create_time_series(self, time_series_in: TimeSeriesIn):

@@ -33,50 +33,80 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
         self.model_out_class = ActivityOut
         self.activity_execution_service: ActivityExecutionService = None
 
-    def save_activity(self, activity: ActivityIn):
+    def save_activity(self, activity: ActivityIn, dataset_name: str):
         """
         Send request to mongo api to create new activity
 
         Args:
             activity (ActivityIn): Activity to be added
+            dataset_name (str): name of dataset
 
         Returns:
             Result of request as activity object
         """
-        return self.create(activity)
+        return self.create(activity, dataset_name)
 
-    def get_activities(self, query: dict = {}):
+    def get_activities(self, dataset_name: str, query: dict = {}):
         """
         Send request to mongo api to get all activities
+
+        Args:
+            dataset_name (str): name of dataset
+            query: Query to mongo api. Empty by default.
 
         Returns:
             Result of request as list of activity objects
         """
-        results_dict = self.get_multiple(query)
+        results_dict = self.get_multiple(dataset_name, query)
         activities = [BasicActivityOut(**result) for result in results_dict]
         return ActivitiesOut(activities=activities)
 
     def get_activity(
-        self, activity_id: Union[int, str], depth: int = 0, source: str = ""
+        self, activity_id: Union[int, str], dataset_name: str, depth: int = 0, source: str = ""
     ):
         """
         Send request to mongo api to get given activity
         Args:
-            depth(int): specifies how many related entities will be traversed to create the response
             activity_id (int | str): identity of activity
+            dataset_name (str): name of dataset
+            depth(int): specifies how many related entities will be traversed to create the response
             source (str): internal argument for mongo services, used to tell the direction of model fetching.
 
         Returns:
             Result of request as activity object
         """
-        return self.get_single(activity_id, depth, source)
+        return self.get_single(activity_id, dataset_name, depth, source)
 
-    def add_activity_execution(self, activity_execution: ActivityExecutionIn):
+    def delete_activity(self, activity_id: int, dataset_name: str):
+        """
+        Send request to mongo api to delete given activity
+        Args:
+            activity_id (int): ID of activity
+            dataset_name (str): name of dataset
+        Returns:
+            Result of request as activity object
+        """
+        return self.delete(activity_id, dataset_name)
+
+    def update_activity(self, activity_id: int, activity: ActivityIn, dataset_name: str):
+        """
+        Send request to graph api to update given activity
+        Args:
+            activity_id (int): ID of activity
+            activity (ActivityIn): Activity to be updated
+            dataset_name (str): name of dataset
+        Returns:
+            Result of request as activity object
+        """
+        return self.update(activity_id, activity, dataset_name)
+
+    def add_activity_execution(self, activity_execution: ActivityExecutionIn, dataset_name: str):
         """
         Add activity execution to activity. Activity execution is embedded in related activity.
 
         Args:
             activity_execution (ActivityExecutionIn): activity execution to add
+            dataset_name (str): name of dataset
 
         Returns:
             Added activity execution as BasicActivityExecutionOut object
@@ -86,18 +116,19 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
         activity_execution = ActivityExecutionOut(**activity_execution_dict)
 
         activity_id = activity_execution.activity_id
-        activity = self.get_single_dict(activity_id)
+        activity = self.get_single_dict(activity_id, dataset_name)
         activity_executions = activity.get(Collections.ACTIVITY_EXECUTION, [])
         activity_executions.append(activity_execution)
         activity[Collections.ACTIVITY_EXECUTION] = activity_executions
 
-        self.update(activity_id, ActivityOut(**activity))
+        self.update(activity_id, ActivityOut(**activity), dataset_name)
         return BasicActivityExecutionOut(**activity_execution_dict)
 
     def update_activity_execution(
         self,
         activity_execution_id: Union[int, str],
         activity_execution_dict: dict,
+        dataset_name: str
     ):
         """
         Edit activity execution in activity. Activity execution is embedded in related activity.
@@ -105,12 +136,13 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
         Args:
             activity_execution_id (Union[int, str]): id of activity execution that is to be updated
             activity_execution_dict (dict): new version of activity execution
+            dataset_name (str): name of dataset
 
         Returns:
             Updated activity execution
         """
         activity_id = activity_execution_dict["activity_id"]
-        activity = self.get_single_dict(activity_id)
+        activity = self.get_single_dict(activity_id, dataset_name)
         if type(activity) is NotFoundByIdModel:
             return NotFoundByIdModel(
                 id=activity_execution_id,
@@ -129,21 +161,22 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
             )
         activity_executions = activity[Collections.ACTIVITY_EXECUTION]
         activity_executions[to_update_index] = activity_execution_dict
-        self.update(activity_id, activity)
+        self.update(activity_id, activity, dataset_name)
         return activity_execution_dict
 
-    def remove_activity_execution(self, activity_execution: ActivityExecutionOut):
+    def remove_activity_execution(self, activity_execution: ActivityExecutionOut, dataset_name: str):
         """
         Remove activity execution from activity. Activity execution is embedded in related activity.
 
         Args:
             activity_execution (ActivityExecutionOut): activity execution to remove
+            dataset_name (str): name of dataset
 
         Returns:
             Removed activity execution
         """
         activity_id = activity_execution.activity_id
-        activity = self.get_single_dict(activity_id)
+        activity = self.get_single_dict(activity_id, dataset_name)
         if type(activity) is NotFoundByIdModel:
             return NotFoundByIdModel(
                 id=activity_execution.id,
@@ -162,7 +195,7 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
             )
         del activity[Collections.ACTIVITY_EXECUTION][to_remove_index]
 
-        self.update(activity_id, ActivityOut(**activity))
+        self.update(activity_id, ActivityOut(**activity), dataset_name)
         return activity_execution
 
     def _get_activity_execution_index_from_activity(
@@ -181,11 +214,11 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
             None,
         )
 
-    def _add_related_documents(self, activity: dict, depth: int, source: str):
+    def _add_related_documents(self, activity: dict, dataset_name: str, depth: int, source: str):
         if depth > 0:
-            self._add_related_activity_executions(activity, depth, source)
+            self._add_related_activity_executions(activity, dataset_name, depth, source)
 
-    def _add_related_activity_executions(self, activity: dict, depth: int, source: str):
+    def _add_related_activity_executions(self, activity: dict, dataset_name: str, depth: int, source: str):
         """
         Observable information is embedded within recording model
         """
@@ -193,5 +226,5 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
         if source != Collections.ACTIVITY_EXECUTION and has_activity_executions:
             for ae in activity[Collections.ACTIVITY_EXECUTION]:
                 self.activity_execution_service._add_related_documents(
-                    ae, depth - 1, Collections.ACTIVITY, activity
+                    ae, dataset_name, depth - 1, Collections.ACTIVITY, activity
                 )
