@@ -114,16 +114,18 @@ class ParticipantServiceMongoDB(ParticipantService, GenericMongoServiceMixin):
     def add_participant_state(self, participant_state: ParticipantStateIn, dataset_name: str):
         participant_state_dict = participant_state.dict()
         participant_state_dict["id"] = str(ObjectId())
-        participant_id = participant_state.participant_id
         participant_state = ParticipantStateOut(**participant_state_dict)
 
+        participant_id = participant_state.participant_id
         participant = self.get_single_dict(participant_id, dataset_name)
         participant_states = participant.get(Collections.PARTICIPANT_STATE, [])
+        if participant_states is None:
+            participant_states = []
         participant_states.append(participant_state)
         participant[Collections.PARTICIPANT_STATE] = participant_states
 
         self.update(participant_id, ParticipantOut(**participant), dataset_name)
-        return BasicParticipantStateOut(**participant_state.dict())
+        return BasicParticipantStateOut(**participant_state_dict)
 
     def update_participant_state(
         self,
@@ -161,9 +163,9 @@ class ParticipantServiceMongoDB(ParticipantService, GenericMongoServiceMixin):
                 errors={"errors": "participant state not found"},
             )
         participant_states = participant[Collections.PARTICIPANT_STATE]
-        participant_states[to_update_index] = participant_state_dict
-        self.update(participant_id, participant, dataset_name)
-        return participant_state_dict
+        participant_states[to_update_index] = ParticipantStateOut(**participant_state_dict)
+        self.update(participant_id, ParticipantOut(**participant), dataset_name)
+        return ParticipantStateOut(**participant_state_dict)
 
     def remove_participant_state(self, participant_state: ParticipantStateOut, dataset_name: str):
         """

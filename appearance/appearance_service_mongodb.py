@@ -25,7 +25,7 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
     def __init__(self):
         self.mongo_api_service = MongoApiService()
         self.participant_state_service: ParticipantStateService = None
-        self.model_out_class = None
+        self.model_out_class = AppearanceSomatotypeOut
 
     def save_appearance_occlusion(self, appearance: AppearanceOcclusionIn, dataset_name: str):
         """

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from datetime import datetime, date
 from typing import Union
 
 from pydantic import BaseModel
@@ -19,7 +20,6 @@ class GenericMongoServiceMixin:
     def __init__(self):
         self.mongo_api_service = MongoApiService()
 
-#ok
     def create(self, object_in: BaseModel, dataset_name: str):
         """
         Generic method for sending request to mongo api to create new document
@@ -31,11 +31,14 @@ class GenericMongoServiceMixin:
         Returns:
             Result of request as data object
         """
+        for field, value in object_in.dict().items():
+            if isinstance(value, date) and not isinstance(value, datetime):
+                setattr(object_in, field, datetime.combine(value, datetime.min.time()))
+
         created_document_id = self.mongo_api_service.create_document(object_in, dataset_name)
 
         return self.get_single(created_document_id, dataset_name)
 
-#ok
     def get_multiple(
         self, dataset_name: str, query: dict = {}, depth: int = 0, source: str = "", *args, **kwargs
     ):
@@ -127,6 +130,10 @@ class GenericMongoServiceMixin:
 
         if type(get_response) is NotFoundByIdModel:
             return get_response
+
+        for field, value in updated_object.dict().items():
+            if isinstance(value, date) and not isinstance(value, datetime):
+                setattr(updated_object, field, datetime.combine(value, datetime.min.time()))
 
         self.mongo_api_service.update_document(id, updated_object, dataset_name)
 

@@ -26,7 +26,7 @@ class PersonalityServiceMongoDB(PersonalityService, GenericMongoServiceMixin):
     def __init__(self):
         self.mongo_api_service = MongoApiService()
         self.participant_state_service: ParticipantStateService = None
-        self.model_out_class = None
+        self.model_out_class = PersonalityBigFiveOut
 
     def save_personality_big_five(self, personality: PersonalityBigFiveIn, dataset_name: str):
         """

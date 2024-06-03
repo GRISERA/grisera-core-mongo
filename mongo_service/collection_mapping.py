@@ -1,4 +1,4 @@
-from grisera import ActivityIn
+from grisera import ActivityIn, DatasetIn
 from grisera import (
     ActivityExecutionPropertyIn,
     ActivityExecutionRelationIn,
@@ -56,6 +56,7 @@ class.
 
 
 class Collections(str, Enum):
+    DATASET = "dataset"
     ACTIVITY = "activities"
     ACTIVITY_EXECUTION = "activity_executions"
     APPEARANCE = "appearances"
@@ -79,6 +80,7 @@ class Collections(str, Enum):
 
 
 SUPERCLASSES_TO_COLLECTION_NAMES = {
+    DatasetIn: Collections.DATASET,
     ActivityIn: Collections.ACTIVITY,
     ActivityExecutionPropertyIn: Collections.ACTIVITY_EXECUTION,
     ActivityExecutionRelationIn: Collections.ACTIVITY_EXECUTION,

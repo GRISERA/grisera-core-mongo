@@ -118,11 +118,13 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
         activity_id = activity_execution.activity_id
         activity = self.get_single_dict(activity_id, dataset_name)
         activity_executions = activity.get(Collections.ACTIVITY_EXECUTION, [])
+        if activity_executions is None:
+            activity_executions = []
         activity_executions.append(activity_execution)
         activity[Collections.ACTIVITY_EXECUTION] = activity_executions
 
         self.update(activity_id, ActivityOut(**activity), dataset_name)
-        return BasicActivityExecutionOut(**activity_execution_dict)
+        return ActivityExecutionOut(**activity_execution_dict)
 
     def update_activity_execution(
         self,
@@ -160,9 +162,9 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
                 errors={"errors": "activity execution not found"},
             )
         activity_executions = activity[Collections.ACTIVITY_EXECUTION]
-        activity_executions[to_update_index] = activity_execution_dict
-        self.update(activity_id, activity, dataset_name)
-        return activity_execution_dict
+        activity_executions[to_update_index] = ActivityExecutionOut(**activity_execution_dict)
+        self.update(activity_id, ActivityOut(**activity), dataset_name)
+        return ActivityExecutionOut(**activity_execution_dict)
 
     def remove_activity_execution(self, activity_execution: ActivityExecutionOut, dataset_name: str):
         """
