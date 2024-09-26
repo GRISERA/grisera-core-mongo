@@ -59,11 +59,6 @@ class MongoApiService:
         """
         Load single document. Output id fields are converted from ObjectId type to str.
         """
-        if id is None:
-            return NotFoundByIdModel(
-                id=id,
-                errors={"errors": "document cant have null id"},
-            )
         db = self.client[dataset_name]
         result_dict = db[collection_name].find_one(
             {self.MONGO_ID_FIELD: ObjectId(id)}, *args, **kwargs
