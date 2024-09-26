@@ -136,7 +136,7 @@ class ParticipationServiceMongoDB(ParticipationService, GenericMongoServiceMixin
         related_participant_state = (
             self.participant_state_service.get_participant_state(participant_state_id, dataset_name)
         )
-        participant_state_exists = related_participant_state is not NotFoundByIdModel
+        participant_state_exists = type(related_participant_state) is not NotFoundByIdModel
         return participant_state_id is None or participant_state_exists
 
     def _check_related_activity_execution(self, activity_execution_id, dataset_name: str):
@@ -146,7 +146,7 @@ class ParticipationServiceMongoDB(ParticipationService, GenericMongoServiceMixin
                 dataset_name
             )
         )
-        activity_execution_exists = related_activity_execution is not NotFoundByIdModel
+        activity_execution_exists = type(related_activity_execution) is not NotFoundByIdModel
         return activity_execution_id is None or activity_execution_exists
 
     def _add_related_documents(self, participation: dict, dataset_name: str, depth: int, source: str):

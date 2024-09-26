@@ -38,7 +38,10 @@ from grisera import (
     BasicRegisteredChannelOut,
 )
 from grisera import RegisteredDataIn
-from grisera import ScenarioIn
+from grisera import (
+    ScenarioIn,
+    ScenarioOut,
+)
 from grisera import (
     TimeSeriesPropertyIn,
     TimeSeriesRelationIn,
@@ -110,6 +113,7 @@ SUPERCLASSES_TO_COLLECTION_NAMES = {
     RegisteredChannelIn: Collections.REGISTERED_CHANNEL,
     RegisteredDataIn: Collections.REGISTERED_DATA,
     ScenarioIn: Collections.SCENARIO,
+    ScenarioOut: Collections.SCENARIO,
     TimeSeriesPropertyIn: Collections.TIME_SERIES,
     TimeSeriesRelationIn: Collections.TIME_SERIES,
 }

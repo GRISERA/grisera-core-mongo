@@ -63,7 +63,7 @@ class ObservableInformationServiceMongoDB(
         related_modality = self.modality_service.get_modality(
             observable_information.modality_id, dataset_name
         )
-        related_modality_exists = related_modality is not NotFoundByIdModel
+        related_modality_exists = type(related_modality) is not NotFoundByIdModel
         if (
             observable_information.modality_id is not None
             and not related_modality_exists
@@ -75,7 +75,7 @@ class ObservableInformationServiceMongoDB(
         related_life_activity = self.life_activity_service.get_life_activity(
             observable_information.life_activity_id, dataset_name
         )
-        related_life_activity_exists = related_life_activity is not NotFoundByIdModel
+        related_life_activity_exists = type(related_life_activity) is not NotFoundByIdModel
         if (
             observable_information.life_activity_id is not None
             and not related_life_activity_exists

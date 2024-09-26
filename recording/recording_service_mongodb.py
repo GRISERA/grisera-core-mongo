@@ -57,7 +57,7 @@ f
         participation = self.participation_service.get_participation(
             recording.participation_id, dataset_name
         )
-        participation_exists = participation is not NotFoundByIdModel
+        participation_exists = type(participation) is not NotFoundByIdModel
         if recording.participation_id is not None and not participation_exists:
             return RecordingOut(errors={"errors": "given participation does not exist"})
 
@@ -67,7 +67,7 @@ f
                 dataset_name
             )
         )
-        registered_channel_exists = related_registered_channel is not NotFoundByIdModel
+        registered_channel_exists = type(related_registered_channel) is not NotFoundByIdModel
         if (
             recording.registered_channel_id is not None
             and not registered_channel_exists

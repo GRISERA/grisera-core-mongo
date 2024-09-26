@@ -12,6 +12,7 @@ from grisera import ModalityIn, Modality
 from grisera import ModalityService
 
 
+# depreciated code
 class SetupNodes:
     """
     Class to init nodes in graph database
@@ -33,7 +34,7 @@ class SetupNodes:
         """
         channel_service = ChannelService()
         created_types = [channel.type for channel in channel_service.get_channels().channels]
-        [channel_service.save_channel(ChannelIn(type=channel_type.value))
+        [channel_service.save_channel(ChannelIn(type=channel_type.value, description=channel_type.description))
          for channel_type in ChannelType
          if channel_type.value not in created_types]
 
@@ -52,7 +53,6 @@ class SetupNodes:
             for arrangement in Arrangement
             if arrangement.value[1] not in created_arrangements]
 
-
     def set_modalities(self):
         """
         Initialize values of modalities
@@ -62,7 +62,6 @@ class SetupNodes:
         [modality_service.save_modality(ModalityIn(modality=modality_modality.value))
          for modality_modality in Modality
          if modality_modality.value not in created_modalities]
-
 
     def set_life_activities(self):
         """
@@ -75,7 +74,6 @@ class SetupNodes:
         [life_activity_service.save_life_activity(LifeActivityIn(life_activity=life_activity_life_activity.value))
          for life_activity_life_activity in LifeActivity
          if life_activity_life_activity.value not in created_types]
-
 
     def set_measure_names(self):
         """

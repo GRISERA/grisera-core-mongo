@@ -248,7 +248,7 @@ class ParticipantStateServiceMongoDB(ParticipantStateService, GenericMongoServic
 
     def _check_related_participant(self, participant_id: Union[str, int], dataset_name: str):
         related_participant = self.participant_service.get_participant(participant_id, dataset_name)
-        related_participant_exists = related_participant is not NotFoundByIdModel
+        related_participant_exists = type(related_participant) is not NotFoundByIdModel
         return participant_id is None or related_participant_exists
 
     def _check_related_personalities(self, personality_ids: List[Union[str, int]], dataset_name: str):

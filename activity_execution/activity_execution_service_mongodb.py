@@ -63,7 +63,7 @@ class ActivityExecutionServiceMongoDB(
             activity_execution.arrangement_id,
             dataset_name
         )
-        related_arrangement_exists = related_arrangement is not NotFoundByIdModel
+        related_arrangement_exists = type(related_arrangement) is not NotFoundByIdModel
         if (
             activity_execution.arrangement_id is not None
             and not related_arrangement_exists
@@ -255,7 +255,7 @@ class ActivityExecutionServiceMongoDB(
             activity_execution.arrangement_id,
             dataset_name
         )
-        related_arrangement_exists = related_arrangement is not NotFoundByIdModel
+        related_arrangement_exists = type(related_arrangement) is not NotFoundByIdModel
         if (
             activity_execution.arrangement_id is not None
             and not related_arrangement_exists

@@ -52,7 +52,7 @@ class RegisteredChannelServiceMongoDB(
             registered_channel.channel_id,
             dataset_name
         )
-        channel_exists = related_channel is not NotFoundByIdModel
+        channel_exists = type(related_channel) is not NotFoundByIdModel
         if registered_channel.channel_id is not None and not channel_exists:
             return RegisteredChannelOut(
                 errors={"errors": "given channel does not exist"}
@@ -62,7 +62,7 @@ class RegisteredChannelServiceMongoDB(
             registered_channel.registered_data_id,
             dataset_name
         )
-        rd_exists = related_rd is not NotFoundByIdModel
+        rd_exists = type(related_rd) is not NotFoundByIdModel
         if registered_channel.registered_data_id is not None and not rd_exists:
             return RegisteredChannelOut(
                 errors={"errors": "given registered data does not exist"}

@@ -10,7 +10,7 @@ from observable_information.observable_information_service_mongodb import (
     ObservableInformationServiceMongoDB,
 )
 from personality.personality_service_mongodb import PersonalityServiceMongoDB
-# from scenario.scenario_service_mongodb import ScenarioServiceMongoDB
+from scenario.scenario_service_mongodb import ScenarioServiceMongoDB
 from grisera import ServiceFactory
 from channel.channel_service_mongodb import ChannelServiceMongoDB
 from life_activity.life_activity_service_mongodb import LifeActivityServiceMongoDB
@@ -27,7 +27,7 @@ from registered_channel.registered_channel_service_mongodb import (
     RegisteredChannelServiceMongoDB,
 )
 from registered_data.registered_data_service_mongodb import RegisteredDataServiceMongoDB
-# from time_series.time_series_service_mongodb import TimeSeriesServiceMongoDB
+from time_series.time_series_service_mongodb import TimeSeriesServiceMongoDB
 from grisera import ActivityService
 from grisera import ActivityExecutionService
 from grisera import AppearanceService
@@ -63,7 +63,7 @@ class MongoServiceFactory(ServiceFactory):
         self.observable_information_service = ObservableInformationServiceMongoDB()
         self.modality_service = ModalityServiceMongoDB()
         self.life_activity_service = LifeActivityServiceMongoDB()
-        # self.time_series_service = TimeSeriesServiceMongoDB()
+        self.time_series_service = TimeSeriesServiceMongoDB()
         self.measure_service = MeasureServiceMongoDB()
         self.measure_name_service = MeasureNameServiceMongoDB()
         self.participation_service = ParticipationServiceMongoDB()
@@ -75,17 +75,17 @@ class MongoServiceFactory(ServiceFactory):
         self.activity_execution_service = ActivityExecutionServiceMongoDB()
         self.activity_service = ActivityServiceMongoDB()
         self.experiment_service = ExperimentServiceMongoDB()
-        # self.scenario_service = ScenarioServiceMongoDB()
+        self.scenario_service = ScenarioServiceMongoDB()
 
         service_pairs = [
             ("registered_channel", "channel"),
             ("registered_channel", "registered_data"),
             ("registered_channel", "recording"),
             ("observable_information", "recording"),
-            # ("observable_information", "time_series"),
+            ("observable_information", "time_series"),
             ("observable_information", "life_activity"),
             ("observable_information", "modality"),
-            # ("measure", "time_series"),
+            ("measure", "time_series"),
             ("measure", "measure_name"),
             ("participation", "recording"),
             ("participant_state", "participation"),
@@ -95,8 +95,8 @@ class MongoServiceFactory(ServiceFactory):
             ("activity_execution", "activity"),
             ("activity_execution", "arrangement"),
             ("activity_execution", "participation"),
-            # ("activity_execution", "scenario"),
-            # ("experiment", "scenario"),
+            ("activity_execution", "scenario"),
+            ("experiment", "scenario"),
         ]
 
         for first_service_name, second_service_name in service_pairs:
@@ -160,12 +160,10 @@ class MongoServiceFactory(ServiceFactory):
         return self.registered_data_service
 
     def get_scenario_service(self) -> ScenarioService:
-        pass
-        #        return self.scenario_service
+        return self.scenario_service
 
     def get_time_series_service(self) -> TimeSeriesService:
-        pass
-        #        return self.time_series_service
+        return self.time_series_service
 
     def _pair_services(
         self, first_service_collection_name: str, second_service_collection_name: str

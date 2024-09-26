@@ -44,7 +44,7 @@ class MeasureServiceMongoDB(MeasureService, GenericMongoServiceMixin):
             Result of request as measure object
         """
         related_mn = self.measure_name_service.get_measure_name(measure.measure_name_id, dataset_name)
-        mn_exists = related_mn is not NotFoundByIdModel
+        mn_exists = type(related_mn) is not NotFoundByIdModel
         if measure.measure_name_id is not None and not mn_exists:
             return MeasureOut(errors={"errors": "given measure name does not exist"})
 
@@ -142,7 +142,7 @@ class MeasureServiceMongoDB(MeasureService, GenericMongoServiceMixin):
 
 
         related_mn = self.measure_name_service.get_measure_name(measure.measure_name_id, dataset_name)
-        mn_exists = related_mn is not NotFoundByIdModel
+        mn_exists = type(related_mn) is not NotFoundByIdModel
         if measure.measure_name_id is not None and not mn_exists:
             return MeasureOut(errors={"errors": "given measure name does not exist"})
 
