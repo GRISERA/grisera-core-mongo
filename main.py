@@ -42,7 +42,7 @@ app.add_middleware(
     allow_origins=["*"],  # or restrict to specific domains in production
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
-    allow_headers=["Authorization", "Content-Type"],  # Allow specific headers including Authorization
+    allow_headers=["*"],  # Allow specific headers including Authorization ["Authorization", "Content-Type"]
 )
 
 app.include_router(activity_router)

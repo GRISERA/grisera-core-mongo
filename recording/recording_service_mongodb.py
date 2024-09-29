@@ -44,7 +44,7 @@ f
         self.observable_information_service = None
         self.participation_service = None
 
-    def save_recording(self, recording: RecordingIn, dataset_name: str):
+    def save_recording(self, recording: RecordingIn, dataset_id: Union[int, str]):
         """
         Send request to mongo api to create new recording document
 
@@ -55,7 +55,7 @@ f
             Result of request as recording object
         """
         participation = self.participation_service.get_participation(
-            recording.participation_id, dataset_name
+            recording.participation_id, dataset_id
         )
         participation_exists = type(participation) is not NotFoundByIdModel
         if recording.participation_id is not None and not participation_exists:
@@ -64,7 +64,7 @@ f
         related_registered_channel = (
             self.registered_channel_service.get_registered_channel(
                 recording.registered_channel_id,
-                dataset_name
+                dataset_id
             )
         )
         registered_channel_exists = type(related_registered_channel) is not NotFoundByIdModel
@@ -76,20 +76,20 @@ f
                 errors={"errors": "given registered channel does not exist"}
             )
 
-        return self.create(recording, dataset_name)
+        return self.create(recording, dataset_id)
 
-    def get_recordings(self, dataset_name: str, query: dict = {}):
+    def get_recordings(self, dataset_id: Union[int, str], query: dict = {}):
         """
         Send request to mongo api to get recordings
         Returns:
             Result of request as list of recordings objects
         """
-        results_dict = self.get_multiple(dataset_name, query)
+        results_dict = self.get_multiple(dataset_id, query)
         results = [BasicRecordingOut(**result) for result in results_dict]
         return RecordingsOut(recordings=results)
 
     def get_recording(
-        self, recording_id: Union[str, int], dataset_name: str, depth: int = 0, source: str = ""
+        self, recording_id: Union[str, int], dataset_id: Union[int, str], depth: int = 0, source: str = ""
     ):
         """
         Send request to mongo api to get given recording. This method uses mixin get implementation.
@@ -106,9 +106,9 @@ f
         Returns:
             Result of request as registered channel object
         """
-        return self.get_single(recording_id, dataset_name, depth, source)
+        return self.get_single(recording_id, dataset_id, depth, source)
 
-    def delete_recording(self, recording_id: Union[str, int], dataset_name: str):
+    def delete_recording(self, recording_id: Union[str, int], dataset_id: Union[int, str]):
         """
         Send request to mongo api to delete given recording
 
@@ -118,10 +118,10 @@ f
         Returns:
             Result of request as recording object
         """
-        return self.delete(recording_id, dataset_name)
+        return self.delete(recording_id, dataset_id)
 
     def update_recording(
-        self, recording_id: Union[str, int], recording: RecordingPropertyIn, dataset_name: str
+        self, recording_id: Union[str, int], recording: RecordingPropertyIn, dataset_id: Union[int, str]
     ):
         """
         Send request to mongo api to update given recording
@@ -133,15 +133,15 @@ f
         Returns:
             Result of request as participant state object
         """
-        existing_recording = self.get_recording(recording_id, dataset_name)
+        existing_recording = self.get_recording(recording_id, dataset_id)
 
         for field, value in recording.dict().items():
             setattr(existing_recording, field, value)
 
-        return self.update(recording_id, existing_recording, dataset_name)
+        return self.update(recording_id, existing_recording, dataset_id)
 
     def update_recording_relationships(
-        self, recording_id: Union[str, int], recording: RecordingRelationIn, dataset_name: str
+        self, recording_id: Union[str, int], recording: RecordingRelationIn, dataset_id: Union[int, str]
     ):
         """
         Send request to mongo api to update given recording
@@ -153,7 +153,7 @@ f
         Returns:
             Result of request as recording object
         """
-        existing_recording = self.get_recording(recording_id, dataset_name)
+        existing_recording = self.get_recording(recording_id, dataset_id)
 
         if type(existing_recording) is NotFoundByIdModel:
             return existing_recording
@@ -161,7 +161,7 @@ f
         related_registered_channel = (
             self.registered_channel_service.get_registered_channel(
                 recording.registered_channel_id,
-                dataset_name
+                dataset_id
             )
         )
         if type(related_registered_channel) is NotFoundByIdModel:
@@ -172,7 +172,7 @@ f
 
         related_participation = self.participation_service.get_participation(
             recording.participation_id,
-            dataset_name
+            dataset_id
         )
         if type(related_participation) is NotFoundByIdModel:
             return NotFoundByIdModel(
@@ -183,10 +183,10 @@ f
         for field, value in recording.dict().items():
             setattr(existing_recording, field, value)
 
-        return self.update(recording_id, existing_recording, dataset_name)
+        return self.update(recording_id, existing_recording, dataset_id)
 
     def add_observable_information(
-        self, observable_information: ObservableInformationIn, dataset_name: str
+        self, observable_information: ObservableInformationIn, dataset_id: Union[int, str]
     ):
         """
         Add observable information to recording. Observable information is embedded in related recording.
@@ -202,21 +202,21 @@ f
         observable_information = ObservableInformationOut(**observable_information_dict)
 
         recording_id = observable_information.recording_id
-        recording = self.get_single_dict(recording_id, dataset_name)
+        recording = self.get_single_dict(recording_id, dataset_id)
         observable_informations = recording.get(Collections.OBSERVABLE_INFORMATION, [])
         if observable_informations is None:
             observable_informations = []
         observable_informations.append(observable_information)
         recording[Collections.OBSERVABLE_INFORMATION] = observable_informations
 
-        self.update(recording_id, RecordingOut(**recording), dataset_name)
+        self.update(recording_id, RecordingOut(**recording), dataset_id)
         return ObservableInformationOut(**observable_information_dict)
 
     def update_observable_information(
         self,
         observable_information_id: Union[int, str],
         observable_information_dict: dict,
-        dataset_name: str
+        dataset_id: Union[int, str]
     ):
         """
         Edit observable information in recording. Observable information is embedded in related recording.
@@ -229,7 +229,7 @@ f
             Updated observable information
         """
         recording_id = observable_information_dict["recording_id"]
-        recording = self.get_single_dict(recording_id, dataset_name)
+        recording = self.get_single_dict(recording_id, dataset_id)
         if type(recording) is NotFoundByIdModel:
             return NotFoundByIdModel(
                 id=observable_information_id,
@@ -248,11 +248,11 @@ f
             )
         observable_informations = recording[Collections.OBSERVABLE_INFORMATION]
         observable_informations[to_update_index] = ObservableInformationOut(**observable_information_dict)
-        self.update(recording_id, RecordingOut(**recording), dataset_name)
+        self.update(recording_id, RecordingOut(**recording), dataset_id)
         return ObservableInformationOut(**observable_information_dict)
 
     def remove_observable_information(
-        self, observable_information: ObservableInformationOut, dataset_name: str
+        self, observable_information: ObservableInformationOut, dataset_id: Union[int, str]
     ):
         """
         Remove observable information from recording. Observable information is embedded in related recording.
@@ -264,7 +264,7 @@ f
             Removed observable information
         """
         recording_id = observable_information.recording_id
-        recording = self.get_single_dict(recording_id, dataset_name)
+        recording = self.get_single_dict(recording_id, dataset_id)
         if type(recording) is NotFoundByIdModel:
             return NotFoundByIdModel(
                 id=observable_information.id,
@@ -283,39 +283,39 @@ f
             )
         del recording[Collections.OBSERVABLE_INFORMATION][to_remove_index]
 
-        self.update(recording_id, RecordingOut(**recording), dataset_name)
+        self.update(recording_id, RecordingOut(**recording), dataset_id)
         return observable_information
 
-    def _add_related_documents(self, recording: dict, dataset_name: str, depth: int, source: str):
+    def _add_related_documents(self, recording: dict, dataset_id: Union[int, str], depth: int, source: str):
         if depth > 0:
-            self._add_related_registered_channel(recording, dataset_name, depth, source)
-            self._add_related_participation(recording, dataset_name, depth, source)
-            self._add_related_observable_informations(recording, dataset_name, depth, source)
+            self._add_related_registered_channel(recording, dataset_id, depth, source)
+            self._add_related_participation(recording, dataset_id, depth, source)
+            self._add_related_observable_informations(recording, dataset_id, depth, source)
 
-    def _add_related_registered_channel(self, recording: dict, dataset_name: str, depth: int, source: str):
+    def _add_related_registered_channel(self, recording: dict, dataset_id: Union[int, str], depth: int, source: str):
         has_related_rc = recording["registered_channel_id"] is not None
         if source != Collections.REGISTERED_CHANNEL and has_related_rc:
             recording[
                 "registered_channel"
             ] = self.registered_channel_service.get_single_dict(
                 recording["registered_channel_id"],
-                dataset_name,
+                dataset_id,
                 depth=depth - 1,
                 source=Collections.RECORDING,
             )
 
-    def _add_related_participation(self, recording: dict, dataset_name: str, depth: int, source: str):
+    def _add_related_participation(self, recording: dict, dataset_id: Union[int, str], depth: int, source: str):
         has_participation = recording["participation_id"] is not None
         if source != Collections.PARTICIPATION and has_participation:
             recording["participation"] = self.participation_service.get_single_dict(
                 channel_id=recording["participation_id"],
-                dataset_name=dataset_name,
+                dataset_id=dataset_id,
                 depth=depth - 1,
                 source=Collections.RECORDING,
             )
 
     def _add_related_observable_informations(
-        self, recording: dict, dataset_name: str, depth: int, source: str
+        self, recording: dict, dataset_id: Union[int, str], depth: int, source: str
     ):
         """
         Observable information is embedded within recording model
@@ -326,7 +326,7 @@ f
         if source != Collections.OBSERVABLE_INFORMATION and has_observable_informations:
             for oi in recording[Collections.OBSERVABLE_INFORMATION]:
                 self.observable_information_service._add_related_documents(
-                    oi, dataset_name, depth - 1, Collections.RECORDING, recording
+                    oi, dataset_id, depth - 1, Collections.RECORDING, recording
                 )
 
     def _get_observable_information_index_from_recording(

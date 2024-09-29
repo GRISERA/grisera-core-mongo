@@ -37,20 +37,20 @@ class RegisteredChannelServiceMongoDB(
         self.registered_data_service = None
         self.recording_service = None
 
-    def save_registered_channel(self, registered_channel: RegisteredChannelIn, dataset_name: str):
+    def save_registered_channel(self, registered_channel: RegisteredChannelIn, dataset_id: Union[int, str]):
         """
         Send request to mongo api to create new registered channel. This method uses mixin create implementation.
 
         Args:
             registered_channel (RegisteredChannelIn): Registered channel to be added
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as registered channel object
         """
         related_channel = self.channel_service.get_channel(
             registered_channel.channel_id,
-            dataset_name
+            dataset_id
         )
         channel_exists = type(related_channel) is not NotFoundByIdModel
         if registered_channel.channel_id is not None and not channel_exists:
@@ -60,7 +60,7 @@ class RegisteredChannelServiceMongoDB(
 
         related_rd = self.registered_data_service.get_registered_data(
             registered_channel.registered_data_id,
-            dataset_name
+            dataset_id
         )
         rd_exists = type(related_rd) is not NotFoundByIdModel
         if registered_channel.registered_data_id is not None and not rd_exists:
@@ -68,32 +68,32 @@ class RegisteredChannelServiceMongoDB(
                 errors={"errors": "given registered data does not exist"}
             )
 
-        return self.create(registered_channel, dataset_name)
+        return self.create(registered_channel, dataset_id)
 
-    def get_registered_channels(self, dataset_name: str, query: dict = {}):
+    def get_registered_channels(self, dataset_id: Union[int, str], query: dict = {}):
         """
         Send request to mongo api to get registered channels. This method uses mixin get implementation.
 
         Args:
             query (dict): Query for mongo request. Gets all registered channels by default.
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as list of registered channels objects
         """
-        results_dict = self.get_multiple(dataset_name, query)
+        results_dict = self.get_multiple(dataset_id, query)
         results = [BasicRegisteredChannelOut(**result) for result in results_dict]
         return RegisteredChannelsOut(registered_channels=results)
 
     def get_registered_channel(
-        self, registered_channel_id: Union[str, int], dataset_name: str, depth: int = 0, source: str = ""
+        self, registered_channel_id: Union[str, int], dataset_id: Union[int, str], depth: int = 0, source: str = ""
     ):
         """
         Send request to mongo api to get given registered channel. This method uses mixin get implementation.
 
         Args:
             registered_channel_id (Union[str, int]): Id of registered channel
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
             depth (int): this attribute specifies how many models will be traversed to create the response.
                          for depth=0, only no further models will be traversed.
             source (str): internal argument for mongo services, used to tell the direction of model fetching.
@@ -103,13 +103,13 @@ class RegisteredChannelServiceMongoDB(
         Returns:
             Result of request as registered channel object
         """
-        return self.get_single(registered_channel_id, dataset_name, depth, source)
+        return self.get_single(registered_channel_id, dataset_id, depth, source)
 
     def update_registered_channel_relationships(
         self,
         registered_channel_id: Union[str, int],
         updated_registered_channel: RegisteredChannelIn,
-        dataset_name: str,
+        dataset_id: Union[int, str],
     ):
         """
         Send request to mongo api to update given registered channel
@@ -117,12 +117,12 @@ class RegisteredChannelServiceMongoDB(
         Args:
             registered_channel_id (Union[str, int]): Id of registered channel
             updated_registered_channel (RegisteredChannelIn): Document to update
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as registered channel object
         """
-        existing_registered_channel = self.get_registered_channel(registered_channel_id, dataset_name)
+        existing_registered_channel = self.get_registered_channel(registered_channel_id, dataset_id)
 
         if type(existing_registered_channel) is NotFoundByIdModel:
             return existing_registered_channel
@@ -130,7 +130,7 @@ class RegisteredChannelServiceMongoDB(
         if updated_registered_channel.channel_id is not None:
             related_channel = self.channel_service.get_channel(
                 updated_registered_channel.channel_id,
-                dataset_name
+                dataset_id
             )
             related_channel_exists = type(related_channel) is not NotFoundByIdModel
             if not related_channel_exists:
@@ -144,7 +144,7 @@ class RegisteredChannelServiceMongoDB(
             related_registered_channel = (
                 self.registered_data_service.get_registered_data(
                     updated_registered_channel.registered_data_id,
-                    dataset_name
+                    dataset_id
                 )
             )
             related_registered_channel_exists = (
@@ -160,52 +160,52 @@ class RegisteredChannelServiceMongoDB(
         self.mongo_api_service.update_document(
             registered_channel_id,
             updated_registered_channel,
-            dataset_name,
+            dataset_id,
         )
-        return self.get_registered_channel(registered_channel_id, dataset_name)
+        return self.get_registered_channel(registered_channel_id, dataset_id)
 
-    def delete_registered_channel(self, registered_channel_id: Union[str, int], dataset_name: str):
+    def delete_registered_channel(self, registered_channel_id: Union[str, int], dataset_id: Union[int, str]):
         """
         Send request to mongo api to delete given registered channel. This method uses mixin delete implementation.
 
         Args:
             registered_channel_id (Union[str, int]): Id of registered channel
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as registered channel object
         """
-        return self.delete(registered_channel_id, dataset_name)
+        return self.delete(registered_channel_id, dataset_id)
 
-    def _add_related_documents(self, registered_channel: dict, dataset_name: str, depth: int, source: str):
+    def _add_related_documents(self, registered_channel: dict, dataset_id: Union[int, str], depth: int, source: str):
         if depth > 0:
-            self._add_related_recordings(registered_channel, dataset_name, depth, source)
-            self._add_related_channel(registered_channel, dataset_name, depth, source)
-            self._add_related_registered_data(registered_channel, dataset_name, depth, source)
+            self._add_related_recordings(registered_channel, dataset_id, depth, source)
+            self._add_related_channel(registered_channel, dataset_id, depth, source)
+            self._add_related_registered_data(registered_channel, dataset_id, depth, source)
 
     def _add_related_recordings(
-        self, registered_channel: dict, dataset_name: str, depth: int, source: str
+        self, registered_channel: dict, dataset_id: Union[int, str], depth: int, source: str
     ):
         if source != Collections.RECORDING:
             registered_channel["recordings"] = self.recording_service.get_multiple(
-                dataset_name,
+                dataset_id,
                 {"registered_channel_id": registered_channel["id"]},
                 depth=depth - 1,
                 source=Collections.REGISTERED_CHANNEL,
             )
 
-    def _add_related_channel(self, registered_channel: dict, dataset_name: str, depth: int, source: str):
+    def _add_related_channel(self, registered_channel: dict, dataset_id: Union[int, str], depth: int, source: str):
         has_related_channel = registered_channel["channel_id"] is not None
         if source != Collections.CHANNEL and has_related_channel:
             registered_channel["channel"] = self.channel_service.get_single_dict(
                 registered_channel["channel_id"],
-                dataset_name,
+                dataset_id,
                 depth=depth - 1,
                 source=Collections.REGISTERED_CHANNEL,
             )
 
     def _add_related_registered_data(
-        self, registered_channel: dict, dataset_name: str, depth: int, source: str
+        self, registered_channel: dict, dataset_id: Union[int, str], depth: int, source: str
     ):
         has_related_rd = registered_channel["registered_data_id"] is not None
         if source != Collections.REGISTERED_DATA and has_related_rd:
@@ -213,7 +213,7 @@ class RegisteredChannelServiceMongoDB(
                 "registered_data"
             ] = self.channel_service.get_single_dict(
                 registered_channel["registered_data_id"],
-                dataset_name,
+                dataset_id,
                 depth=depth - 1,
                 source=Collections.REGISTERED_CHANNEL,
             )

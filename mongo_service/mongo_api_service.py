@@ -36,30 +36,30 @@ class MongoApiService:
         self.client = client
 
     #ok
-    def create_document(self, data_in: BaseModel, dataset_name: str):
+    def create_document(self, data_in: BaseModel, dataset_id: Union[int, str]):
         """
         Create new document from model object.
         """
         collection_name = get_collection_name(type(data_in))
         data_as_dict = data_in.dict()
-        return self.create_document_from_dict(data_as_dict, collection_name, dataset_name)
+        return self.create_document_from_dict(data_as_dict, collection_name, dataset_id)
 
     # ok
-    def create_document_from_dict(self, document_dict: dict, collection_name: str, dataset_name: str):
+    def create_document_from_dict(self, document_dict: dict, collection_name: str, dataset_id: Union[int, str]):
         """
         Create new document from a dictionary. Id fields are converted to ObjectId type.
         """
         self._fix_input_ids(document_dict)
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         created_id = db[collection_name].insert_one(document_dict).inserted_id
         return str(created_id)
 
     #ok
-    def get_document(self, id: Union[str, int], collection_name: str, dataset_name: str, *args, **kwargs):
+    def get_document(self, id: Union[str, int], collection_name: str, dataset_id: Union[int, str], *args, **kwargs):
         """
         Load single document. Output id fields are converted from ObjectId type to str.
         """
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         result_dict = db[collection_name].find_one(
             {self.MONGO_ID_FIELD: ObjectId(id)}, *args, **kwargs
         )
@@ -74,15 +74,15 @@ class MongoApiService:
         return result_dict
 
     #ok
-    def get_documents(self, collection_name: str, dataset_name: str, query: dict = {}, *args, **kwargs):
+    def get_documents(self, collection_name: str, dataset_id: Union[int, str], query: dict = {}, *args, **kwargs):
         """
         Load many documents. Output id fields are converted from ObjectId type to str.
         """
-        if dataset_name == "":
-            dataset_name = mongo_database_name
+        if dataset_id == "":
+            dataset_id = mongo_database_name
 
         self._fix_input_ids(query)
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         results = list(db[collection_name].find(query, *args, **kwargs))
 
         [self._update_mongo_output_id(result) for result in results]
@@ -90,31 +90,31 @@ class MongoApiService:
         return results
 
     #ok
-    def update_document(self, id: Union[str, int], data_to_update: BaseModel, dataset_name: str):
+    def update_document(self, id: Union[str, int], data_to_update: BaseModel, dataset_id: Union[int, str]):
         """
         Update document.
         """
         collection_name = get_collection_name(type(data_to_update))
         data_as_dict = data_to_update.dict()
-        self.update_document_with_dict(collection_name, id, data_as_dict, dataset_name)
+        self.update_document_with_dict(collection_name, id, data_as_dict, dataset_id)
 
     #ok
     def update_document_with_dict(
-        self, collection_name: str, id: Union[str, int], new_document: dict, dataset_name: str
+        self, collection_name: str, id: Union[str, int], new_document: dict, dataset_id: Union[int, str]
     ):
         """
         Update document with new document as dict. Id fields are converted to ObjectId type.
         """
         self._update_mongo_input_id(new_document)
         id = ObjectId(id)
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         db[collection_name].replace_one(
             {self.MONGO_ID_FIELD: id},
             new_document,
         )
 
     #ok
-    def delete_document(self, object_to_delete: BaseModel, dataset_name: str):
+    def delete_document(self, object_to_delete: BaseModel, dataset_id: Union[int, str]):
         """
         Delete document in collection. Given model must have id field.
         """
@@ -125,23 +125,23 @@ class MongoApiService:
             )
         id = ObjectId(id_str)
         collection_name = get_collection_name(type(object_to_delete))
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         db[collection_name].delete_one({self.MONGO_ID_FIELD: id})
         return id
 
-    def create_time_series(self, time_series_in: TimeSeriesIn, dataset_name: str):
+    def create_time_series(self, time_series_in: TimeSeriesIn, dataset_id: Union[int, str]):
         collection_name = Collections.TIME_SERIES
-        self._create_ts_collection_if_missing(collection_name, dataset_name)
+        self._create_ts_collection_if_missing(collection_name, dataset_id)
         ts_id = ObjectId()
         ts_documents = self._time_series_into_documents(time_series_in, ts_id)
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         db[collection_name].insert_many(ts_documents)
         return ts_id
 
     def get_time_series(
         self,
         ts_id: Union[str, int],
-        dataset_name: str,
+        dataset_id: Union[int, str],
         signal_min_value: int = None,
         signal_max_value: int = None,
     ):
@@ -150,7 +150,7 @@ class MongoApiService:
         """
         collection_name = Collections.TIME_SERIES
         query = self._create_ts_query(ts_id, signal_min_value, signal_max_value)
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         time_series_documents = list(db[collection_name].find(query))
         if len(time_series_documents) == 0:
             return NotFoundByIdModel(
@@ -159,23 +159,23 @@ class MongoApiService:
             )
         return self._time_series_documents_to_dict(time_series_documents)
 
-    def get_many_time_series(self, dataset_name: str, query={}, query_params=None):
+    def get_many_time_series(self, dataset_id: Union[int, str], query={}, query_params=None):
         if query_params:
-            ts_ids = self._get_many_ts_filtered(query_params, dataset_name)
+            ts_ids = self._get_many_ts_filtered(query_params, dataset_id)
             if ts_ids is not None:
                 query = {"metadata.id": {"$in": ts_ids}}
             else:
                 query = {}
         else:
             self._fix_input_ids(query)
-        ts_documents = self._get_many_ts(dataset_name, query)
+        ts_documents = self._get_many_ts(dataset_id, query)
         return [
             self._time_series_documents_to_dict(ts_document["value"])
             for ts_document in list(ts_documents)
         ]
 
     def update_time_series_metadata(
-        self, fields_to_update: dict, time_series_id: Union[int, str], dataset_name: str
+        self, fields_to_update: dict, time_series_id: Union[int, str], dataset_id: Union[int, str]
     ):
         ts_id = ObjectId(time_series_id)
         query = {f"{self.METADATA_FIELD}.id": ts_id}
@@ -183,27 +183,27 @@ class MongoApiService:
             f"{self.METADATA_FIELD}.{field}": value
             for field, value in fields_to_update.items()
         }
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         return db[Collections.TIME_SERIES].update_many(
             filter=query, update={"$set": update_dict}
         )
 
     def update_time_series_properties(
-        self, new_time_series: dict, time_series_id: Union[int, str], dataset_name: str
+        self, new_time_series: dict, time_series_id: Union[int, str], dataset_id: Union[int, str]
     ):
-        existing_ts = self.get_time_series(time_series_id, dataset_name=dataset_name)
+        existing_ts = self.get_time_series(time_series_id, dataset_id=dataset_id)
         new_time_series["observable_information_id"] = existing_ts[
             "observable_information_id"
         ]
         new_time_series["measure_id"] = existing_ts["measure_id"]
 
-        self._replace_ts(new_time_series, time_series_id, dataset_name)
+        self._replace_ts(new_time_series, time_series_id, dataset_id)
         return new_time_series
 
-    def delete_time_series(self, time_series_id: Union[int, str], dataset_name: str):
+    def delete_time_series(self, time_series_id: Union[int, str], dataset_id: Union[int, str]):
         ts_id = ObjectId(time_series_id)
         query = {f"{self.METADATA_FIELD}.id": ts_id}
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         return db[Collections.TIME_SERIES].delete_many(filter=query)
 
 
@@ -280,8 +280,8 @@ class MongoApiService:
             else:
                 mongo_object[field] = func(field, mongo_object[field])
 
-    def _create_ts_collection_if_missing(self, collection_name: str, dataset_name: str):
-        db = self.client[dataset_name]
+    def _create_ts_collection_if_missing(self, collection_name: str, dataset_id: Union[int, str]):
+        db = self.client[dataset_id]
         if collection_name not in db.list_collection_names():
             db.create_collection(
                 collection_name,
@@ -397,21 +397,21 @@ class MongoApiService:
 
         return query
 
-    def _get_many_ts(self, dataset_name: str, query={}):
+    def _get_many_ts(self, dataset_id: Union[int, str], query={}):
         aggregation = [
             {"$match": query},
             {"$group": {"_id": "$metadata.id", "value": {"$push": "$$ROOT"}}},
         ]
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         return db[Collections.TIME_SERIES].aggregate(aggregation)
 
-    def _replace_ts(self, new_time_series: dict, time_series_id: Union[int, str], dataset_name: str):
+    def _replace_ts(self, new_time_series: dict, time_series_id: Union[int, str], dataset_id: Union[int, str]):
         with self.client.start_session() as session:
             with session.start_transaction():
-                self.delete_time_series(time_series_id, dataset_name)
-                self.create_time_series(TimeSeriesIn(**new_time_series), dataset_name)
+                self.delete_time_series(time_series_id, dataset_id)
+                self.create_time_series(TimeSeriesIn(**new_time_series), dataset_id)
 
-    def _get_many_ts_filtered(self, query_params, dataset_name: str):
+    def _get_many_ts_filtered(self, query_params, dataset_id: Union[int, str]):
         recording_params = {}
         participant_state_params = {}
         participant_params = {}
@@ -429,7 +429,7 @@ class MongoApiService:
 
         ts_by_recording = None
         if recording_params != {}:
-            ts_by_recording = list(self._get_ts_by_recording(recording_params, dataset_name))
+            ts_by_recording = list(self._get_ts_by_recording(recording_params, dataset_id))
 
         ts_by_participant = None
         if participant_state_params != {} or participant_params != {}:
@@ -437,13 +437,13 @@ class MongoApiService:
                 self._get_ts_by_pariticipant(
                     pariticipant_state_params=participant_state_params,
                     participant_params=participant_params,
-                    dataset_name=dataset_name,
+                    dataset_id=dataset_id,
                 )
             )
 
         ts_by_experiment = None
         if experiment_params != {}:
-            ts_by_experiment = list(self._get_ts_by_experiment(experiment_params, dataset_name=dataset_name))
+            ts_by_experiment = list(self._get_ts_by_experiment(experiment_params, dataset_id=dataset_id))
 
         non_empty_lists = [
             ts_list
@@ -459,7 +459,7 @@ class MongoApiService:
 
         return list(matching_ts_ids)
 
-    def _get_ts_by_recording(self, recording_params, dataset_name: str):
+    def _get_ts_by_recording(self, recording_params, dataset_id: Union[int, str]):
         match_params = {}
         for key, value in recording_params.items():
             if key == "id":
@@ -485,11 +485,11 @@ class MongoApiService:
             {"$unwind": "$tsIds"},
             {"$project": {"_id": 0}},
         ]
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         aggregation_result = list(db[Collections.RECORDING].aggregate(aggregation))
         return aggregation_result[0]["tsIds"] if len(aggregation_result) else []
 
-    def _get_ts_by_pariticipant(self, pariticipant_state_params, participant_params, dataset_name: str):
+    def _get_ts_by_pariticipant(self, pariticipant_state_params, participant_params, dataset_id: Union[int, str]):
         match_params = {}
         for key, value in pariticipant_state_params.items():
             if key == "id":
@@ -502,7 +502,7 @@ class MongoApiService:
             else:
                 match_params[key] = value
         aggregation = self._get_participant_aggregation(match_params)
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         aggregation_result = list(
             db[Collections.PARTICIPANT].aggregate(aggregation)
         )
@@ -552,7 +552,7 @@ class MongoApiService:
             {"$project": {"_id": 0}},
         ]
 
-    def _get_ts_by_experiment(self, experiment_params, dataset_name: str):
+    def _get_ts_by_experiment(self, experiment_params, dataset_id: Union[int, str]):
         match_params = {}
         for key, value in experiment_params.items():
             if key == "id":
@@ -616,7 +616,7 @@ class MongoApiService:
             {"$project": {"_id": 0}},
         ]
         print(match_params)
-        db = self.client[dataset_name]
+        db = self.client[dataset_id]
         aggregation_result = list(
             db[Collections.PARTICIPANT].aggregate(aggregation)
         )

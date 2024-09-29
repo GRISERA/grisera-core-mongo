@@ -27,27 +27,27 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
         self.participant_state_service: ParticipantStateService = None
         self.model_out_class = AppearanceSomatotypeOut
 
-    def save_appearance_occlusion(self, appearance: AppearanceOcclusionIn, dataset_name: str):
+    def save_appearance_occlusion(self, appearance: AppearanceOcclusionIn, dataset_id: Union[int, str]):
         """
         Send request to mongo api to create new appearance occlusion model
 
         Args:
             appearance (AppearanceIn): Appearance to be added
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as appearance state object
         """
         self.model_out_class = AppearanceOcclusionOut
-        return self.create(appearance, dataset_name)
+        return self.create(appearance, dataset_id)
 
-    def save_appearance_somatotype(self, appearance: AppearanceSomatotypeIn, dataset_name: str):
+    def save_appearance_somatotype(self, appearance: AppearanceSomatotypeIn, dataset_id: Union[int, str]):
         """
         Send request to mongo api to create new appearance somatotype model
 
         Args:
             appearance (AppearanceIn): Appearance to be added
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as appearance state object
@@ -65,10 +65,10 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
                 errors="Scale range not between 1 and 7",
             )
         self.model_out_class = AppearanceSomatotypeOut
-        return self.create(appearance, dataset_name)
+        return self.create(appearance, dataset_id)
 
-    def get_single(self, id: Union[str, int], dataset_name: str, depth: int = 0, source: str = "", *args, **kwargs):
-        appearance = self.get_single_dict(id, dataset_name, depth, source)
+    def get_single(self, id: Union[str, int], dataset_id: Union[int, str], depth: int = 0, source: str = "", *args, **kwargs):
+        appearance = self.get_single_dict(id, dataset_id, depth, source)
         if type(appearance) is NotFoundByIdModel:
             return appearance
         return (
@@ -78,34 +78,34 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
         )
 
     def get_appearance(
-        self, appearance_id: Union[int, str], dataset_name: str, depth: int = 0, source: str = ""
+        self, appearance_id: Union[int, str], dataset_id: Union[int, str], depth: int = 0, source: str = ""
     ):
         """
         Send request to mongo api to get given appearance
 
         Args:
             appearance_id (int | str): identity of appearance
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
             depth: (int): specifies how many related entities will be traversed to create the response
             source: Helper arguments that specifies direction of collection traversion
 
         Returns:
             Result of request as appearance object
         """
-        return self.get_single(appearance_id, dataset_name, depth, source)
+        return self.get_single(appearance_id, dataset_id, depth, source)
 
-    def get_appearances(self, dataset_name: str, query: dict = {}):
+    def get_appearances(self, dataset_id: Union[int, str], query: dict = {}):
         """
         Send request to mongo api to get appearances
 
         Args:
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
             query: Query to mongo api. Empty by default.
 
         Returns:
             Result of request as list of appearances objects
         """
-        results_dict = self.get_multiple(dataset_name, query)
+        results_dict = self.get_multiple(dataset_id, query)
         appearances = []
         for appearance_dict in results_dict:
             appearances.append(
@@ -115,22 +115,22 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
             )
         return AppearancesOut(appearances=appearances)
 
-    def delete_appearance(self, appearance_id: Union[int, str], dataset_name: str):
+    def delete_appearance(self, appearance_id: Union[int, str], dataset_id: Union[int, str]):
         """
         Send request to mongo api to delete given appearance
 
         Args:
             appearance_id (int | str): identity of appearance
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as appearance object
         """
-        return self.delete(appearance_id, dataset_name)
+        return self.delete(appearance_id, dataset_id)
 
     def update_appearance_occlusion(
         self, appearance_id: Union[int, str], appearance: AppearanceOcclusionIn,
-                                    dataset_name: str
+                                    dataset_id: Union[int, str]
     ):
         """
         Send request to mongo api to update given appearance occlusion model
@@ -138,25 +138,25 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
         Args:
             appearance_id (int | str): identity of appearance
             appearance (AppearanceOcclusionIn): Properties to update
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as appearance object
         """
-        get_response = self.get_single(appearance_id, dataset_name)
+        get_response = self.get_single(appearance_id, dataset_id)
 
         if type(get_response) is NotFoundByIdModel:
             return get_response
         if type(get_response) is AppearanceSomatotypeOut:
             return NotFoundByIdModel(id=appearance_id, errors="Node not found.")
 
-        self.mongo_api_service.update_document(appearance_id, appearance, dataset_name)
+        self.mongo_api_service.update_document(appearance_id, appearance, dataset_id)
 
-        return self.get_single(appearance_id, dataset_name)
+        return self.get_single(appearance_id, dataset_id)
 
     def update_appearance_somatotype(
         self, appearance_id: Union[int, str], appearance: AppearanceSomatotypeIn,
-                                     dataset_name: str
+                                     dataset_id: Union[int, str]
     ):
         """
         Send request to mongo api to update given appearance somatotype model
@@ -164,7 +164,7 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
         Args:
             appearance_id (int | str): identity of appearance
             appearance (AppearanceSomatotypeIn): Properties to update
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as appearance object
@@ -177,34 +177,34 @@ class AppearanceServiceMongoDB(AppearanceService, GenericMongoServiceMixin):
             return AppearanceSomatotypeOut(
                 **appearance.dict(), errors="Scale range not between 1 and 7"
             )
-        get_response = self.get_single(appearance_id, dataset_name)
+        get_response = self.get_single(appearance_id, dataset_id)
 
         if type(get_response) is NotFoundByIdModel:
             return get_response
         if type(get_response) is AppearanceOcclusionOut:
             return NotFoundByIdModel(id=appearance_id, errors="Node not found.")
 
-        self.mongo_api_service.update_document(appearance_id, appearance, dataset_name)
+        self.mongo_api_service.update_document(appearance_id, appearance, dataset_id)
 
-        return self.get_single(appearance_id, dataset_name)
+        return self.get_single(appearance_id, dataset_id)
 
     def _add_related_documents(
         self,
         appearance: dict,
-        dataset_name: str,
+        dataset_id: Union[int, str],
         depth: int,
         source: str,
     ):
         if depth > 0:
-            self._add_participant_states(appearance, dataset_name, depth, source)
+            self._add_participant_states(appearance, dataset_id, depth, source)
 
-    def _add_participant_states(self, appearance: dict, dataset_name: str, depth: int, source: str):
+    def _add_participant_states(self, appearance: dict, dataset_id: Union[int, str], depth: int, source: str):
         if source != Collections.PARTICIPANT_STATE:
             query = {"appearance_ids": appearance["id"]}
             appearance[
                 "participant_states"
             ] = self.participant_state_service.get_multiple(
-                dataset_name,
+                dataset_id,
                 query,
                 depth=depth - 1,
                 source=Collections.APPEARANCE,
