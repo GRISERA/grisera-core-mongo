@@ -25,85 +25,85 @@ class ExperimentServiceMongoDB(ExperimentService, GenericMongoServiceMixin):
         self.model_out_class = ExperimentOut
         self.scenario_service: ScenarioService = None
 
-    def save_experiment(self, experiment: ExperimentIn, dataset_name: str):
+    def save_experiment(self, experiment: ExperimentIn, dataset_id: Union[int, str]):
         """
         Send request to mongo api to create new experiment
 
         Args:
             experiment (ExperimentIn): Experiment to be added
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as experiment object
         """
-        return self.create(experiment, dataset_name)
+        return self.create(experiment, dataset_id)
 
-    def get_experiments(self, dataset_name: str, query: dict = {}):
+    def get_experiments(self, dataset_id: Union[int, str], query: dict = {}):
         """
         Send request to mongo api to get experiments
 
         Args:
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
             query: Query to mongo api. Empty by default.
 
         Returns:
             Result of request as list of experiments objects
         """
-        results_dict = self.get_multiple(dataset_name, query)
+        results_dict = self.get_multiple(dataset_id, query)
         experiments = [BasicExperimentOut(**result) for result in results_dict]
         return ExperimentsOut(experiments=experiments)
 
     def get_experiment(
-        self, experiment_id: Union[int, str], dataset_name: str, depth: int = 0, source: str = ""
+        self, experiment_id: Union[int, str], dataset_id: Union[int, str], depth: int = 0, source: str = ""
     ):
         """
         Send request to mongo api to get given experiment
 
         Args:
             experiment_id (int | str): identity of experiment
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
             depth: (int): specifies how many related entities will be traversed to create the response
             source (str): internal argument for mongo services, used to tell the direction of model fetching.
 
         Returns:
             Result of request as experiment object
         """
-        return self.get_single(experiment_id, dataset_name, depth, source)
+        return self.get_single(experiment_id, dataset_id, depth, source)
 
-    def delete_experiment(self, experiment_id: int, dataset_name: str):
+    def delete_experiment(self, experiment_id: int, dataset_id: Union[int, str]):
         """
         Send request to mongo api to delete given experiment
 
         Args:
             experiment_id (int): Id of experiment
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as experiment object
         """
-        return self.delete(experiment_id, dataset_name)
+        return self.delete(experiment_id, dataset_id)
 
-    def update_experiment(self, experiment_id: int, experiment: ExperimentIn, dataset_name: str):
+    def update_experiment(self, experiment_id: int, experiment: ExperimentIn, dataset_id: Union[int, str]):
         """
         Send request to mongo api to update given experiment
 
         Args:
             experiment_id (int): Id of experiment
             experiment (ExperimentIn): Properties to update
-            dataset_name (str): name of dataset
+            dataset_id (int | str): name of dataset
 
         Returns:
             Result of request as experiment object
         """
-        return self.update(experiment_id, experiment, dataset_name)
+        return self.update(experiment_id, experiment, dataset_id)
 
-    def _add_related_documents(self, experiment: dict, dataset_name: str, depth: int, source: str):
+    def _add_related_documents(self, experiment: dict, dataset_id: Union[int, str], depth: int, source: str):
         if depth <= 0 or source == Collections.ACTIVITY_EXECUTION:
             return
 
         related_scenario = self.scenario_service.get_scenario_by_experiment(
             experiment["id"],
-            dataset_name
+            dataset_id
         )
         if type(related_scenario) is NotFoundByIdModel:
             return
