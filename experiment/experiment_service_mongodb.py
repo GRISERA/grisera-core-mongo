@@ -98,14 +98,17 @@ class ExperimentServiceMongoDB(ExperimentService, GenericMongoServiceMixin):
         return self.update(experiment_id, experiment, dataset_id)
 
     def _add_related_documents(self, experiment: dict, dataset_id: Union[int, str], depth: int, source: str):
-        if depth <= 0 or source == Collections.ACTIVITY_EXECUTION:
+        if depth <= 0 or source == Collections.ACTIVITY_EXECUTION or source == Collections.EXPERIMENT:
             return
+        source = source if source != "" else Collections.EXPERIMENT
 
-        related_scenario = self.scenario_service.get_scenario_by_experiment(
+        related_scenario = self.scenario_service.get_scenarios_by_experiment(
             experiment["id"],
-            dataset_id
+            dataset_id,
+            depth=depth,
+            source=source,
         )
         if type(related_scenario) is NotFoundByIdModel:
             return
 
-        experiment["activity_executions"] = related_scenario.activity_executions
+        experiment["scenarios"] = related_scenario

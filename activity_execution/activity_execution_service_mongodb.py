@@ -9,7 +9,7 @@ from grisera import (
     ActivityExecutionOut,
     ActivityExecutionsOut,
     BasicActivityExecutionOut,
-    ActivityService,
+    ActivityService, ActivityOut,
 )
 from grisera import ActivityExecutionService
 from grisera import ArrangementService
@@ -280,6 +280,7 @@ class ActivityExecutionServiceMongoDB(
         activity: dict,
     ):
         """Recording is taken from previous get query"""
+        source = source if source != "" else Collections.ACTIVITY_EXECUTION
         if depth > 0:
             self._add_related_arrangement(activity_execution, dataset_id, depth, source)
             self._add_related_experiments(activity_execution, dataset_id, depth, source)
@@ -289,11 +290,12 @@ class ActivityExecutionServiceMongoDB(
     def _add_related_experiments(
         self, activity_execution: dict, dataset_id: Union[int, str], depth: int, source: str
     ):
-        if depth <= 0 or source == Collections.EXPERIMENT:
+        if depth <= 0 or source == Collections.EXPERIMENT or source == Collections.SCENARIO:
             return
+        print(f"Source of request: {source}")
 
         related_scenarios = self.scenario_service.get_scenario_by_activity_execution(
-            activity_execution["id"], dataset_id, depth=depth, multiple=True
+            activity_execution["id"], dataset_id, depth=depth, multiple=True, source=Collections.SCENARIO
         )
         if type(related_scenarios) is NotFoundByIdModel:
             return
@@ -305,42 +307,49 @@ class ActivityExecutionServiceMongoDB(
     def _add_related_participations(
         self, activity_execution: dict, dataset_id: Union[int, str], depth: int, source: str
     ):
-        if source != Collections.PARTICIPATION:
-            activity_execution[
-                "participations"
-            ] = self.participation_service.get_multiple(
-                dataset_id,
-                {"activity_execution_id": activity_execution["id"]},
-                depth=depth - 1,
-                source=Collections.ACTIVITY_EXECUTION,
-            )
+        if depth <= 0 or source == Collections.PARTICIPATION:
+            return
+
+        activity_execution[
+            "participations"
+        ] = self.participation_service.get_multiple(
+            dataset_id,
+            {"activity_execution_id": activity_execution["id"]},
+            depth=depth - 1,
+            source=Collections.PARTICIPANT,
+        )
 
     def _add_related_arrangement(
         self, activity_execution: dict, dataset_id: Union[int, str], depth: int, source: str
     ):
         has_related_arrangement = activity_execution["arrangement_id"] is not None
-        if source != Collections.ARRANGEMENT and has_related_arrangement:
-            activity_execution[
-                "arrangement"
-            ] = self.arrangement_service.get_single_dict(
-                activity_execution["arrangement_id"],
-                dataset_id,
-                depth=depth - 1,
-                source=Collections.ACTIVITY_EXECUTION,
-            )
+        if depth <= 0 or source == Collections.ARRANGEMENT or not has_related_arrangement:
+            return
+
+        activity_execution[
+            "arrangement"
+        ] = self.arrangement_service.get_single_dict(
+            activity_execution["arrangement_id"],
+            dataset_id,
+            depth=depth - 1,
+            source=Collections.ARRANGEMENT,
+        )
 
     def _add_activity(
         self, activity_execution: dict, dataset_id: Union[int, str], depth: int, source: str, activity: dict
     ):
         """Activity has already been added related documents"""
-        if source != Collections.ACTIVITY:
-            activity_execution["activity"] = activity
+        if depth <= 0 or source == Collections.ACTIVITY:
+            return
+
+        activity_execution["activity"] = ActivityOut(**activity)
 
     @staticmethod
     def _get_activity_projection(query):
         return {
             "activity_executions": {"$elemMatch": query} if query else 1,
             "additional_properties": 1,
+            "activity": 1,
             "activity_id": 1,
             "arrangement_id": 1,
         }

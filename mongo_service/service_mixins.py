@@ -54,14 +54,14 @@ class GenericMongoServiceMixin:
         Returns:
             Result of request as list of dictionaries
         """
-        print(f"\nModel out class: {self.model_out_class}")
+        #print(f"\nModel out class: {self.model_out_class}")
         collection_name = get_collection_name(self.model_out_class)
-        print(f"Collection name: {collection_name}\n")
+        #print(f"Collection name: {collection_name}\n")
         results_dict = self.mongo_api_service.get_documents(
             collection_name, dataset_id, query, *args, **kwargs
         )
-        print(f"Result: {results_dict}")
-        print(f"Result type: {type(results_dict[0] if len(results_dict) != 0 else None)}")
+        #print(f"Result: {results_dict}")
+        #print(f"Result type: {type(results_dict[0] if len(results_dict) != 0 else None)}")
 
         for result in results_dict:
             self._add_related_documents(result, dataset_id, depth, source)

@@ -64,7 +64,7 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
                 activity_execution=activity_execution,
                 dataset_id=dataset_id
             )
-            for activity_execution in scenario.activity_executions
+            for activity_execution in scenario.activity_executions or []
         ]
         activity_executions_ids = [ae.id for ae in activity_executions]
 
@@ -72,11 +72,11 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         scenario_dict = scenario.dict()
         scenario_dict[
             "activity_executions"
-        ] = activity_executions_ids  # only ids are saved to db
+        ] = [activity_executions_ids] if len(activity_executions_ids) != 0 else []  # only ids are saved to db
         created_scenario_id = self.mongo_api_service.create_document_from_dict(
             scenario_dict, Collections.SCENARIO, dataset_id
         )
-        scenario_dict["activity_executions"] = activity_executions
+        scenario_dict["activity_executions"] = [activity_executions]
         return ScenarioOut(**scenario_dict)
 
     def add_activity_execution(
@@ -106,6 +106,48 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         )
 
         return activity_execution
+
+    def update_scenario(self, scenario_id: Union[int, str], scenario: ScenarioIn, dataset_id: Union[int, str]):
+        scenario_dict = self.get_scenario_dict_by_scenario_id(scenario_id, dataset_id)
+        if type(scenario_dict) is NotFoundByIdModel:
+            return NotFoundByIdModel(
+                id=scenario_id,
+                errors={"errors": "Scenario not found"},
+            )
+
+        activity_executions = scenario_dict["activity_executions"]
+        scenario_dict_new = scenario.dict()
+        scenario_dict_new["activity_executions"] = activity_executions  # only ids are saved to db
+        self.mongo_api_service.update_document_with_dict(
+            Collections.SCENARIO, scenario_id, scenario_dict_new, dataset_id
+        )
+
+        return self.get_scenario(scenario_id, dataset_id)
+
+    def add_scenario_execution(self, scenario_id: Union[int, str], scenario: ScenarioIn, dataset_id: Union[int, str]):
+        scenario_dict = self.get_scenario_dict_by_scenario_id(scenario_id, dataset_id)
+        if type(scenario_dict) is NotFoundByIdModel:
+            return NotFoundByIdModel(
+                id=scenario_id,
+                errors={"errors": "Scenario not found"},
+            )
+
+        activity_executions = [
+            self.activity_execution_service.save_activity_execution(
+                activity_execution=activity_execution,
+                dataset_id=dataset_id
+            )
+            for activity_execution in scenario.activity_executions or []
+        ]
+        activity_executions_ids = [ae.id for ae in activity_executions]
+
+        scenario_dict["activity_executions"].append(activity_executions_ids)  # only ids are saved to db
+
+        self.mongo_api_service.update_document_with_dict(
+            Collections.SCENARIO, scenario_id, scenario_dict, dataset_id
+        )  # update must be performed with dict, as model is different from saved scenarios (only ae ids are stored)
+
+        return self.get_scenario(scenario_id, dataset_id)
 
     def change_order(self, order_change: OrderChangeIn, dataset_id: Union[int, str]):
         """
@@ -142,14 +184,15 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
 
         is_from_experiment = type(related_element) is ExperimentOut
 
-        new_activity_execution_index = 0
+        new_activity_execution_index = (0, 0)
         if not is_from_experiment:
-            previous_activity_execution_index = scenario_dict[
-                "activity_executions"
-            ].index(previous_id)
-            new_activity_execution_index = previous_activity_execution_index + 1
-        scenario_dict["activity_executions"].insert(
-            new_activity_execution_index, activity_execution_id
+            for i, activity_executions_list in enumerate(scenario_dict["activity_executions"]):
+                if previous_id in activity_executions_list:
+                    new_activity_execution_index = (i, activity_executions_list.index(previous_id) + 1)
+                    break
+
+        scenario_dict["activity_executions"][new_activity_execution_index[0]].insert(
+            new_activity_execution_index[1], activity_execution_id
         )
 
         self.mongo_api_service.update_document_with_dict(
@@ -171,7 +214,10 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         if type(scenario) is NotFoundByIdModel:
             return scenario
         scenario_dict = self.get_scenario_dict_by_scenario_id(scenario.id, dataset_id)
-        scenario_dict["activity_executions"].remove(activity_execution_id)
+        for activity_executions_list in scenario_dict["activity_executions"]:
+            if activity_execution_id in activity_executions_list:
+                activity_executions_list.remove(activity_execution_id)
+                break
 
         self.mongo_api_service.update_document_with_dict(
             Collections.SCENARIO, scenario.id, scenario_dict, dataset_id
@@ -197,6 +243,13 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         Returns:
             Result of request as Scenario object and element specified by element_id
         """
+        scenario_result = self.get_single_dict(element_id, dataset_id, depth)
+        if type(scenario_result) is not NotFoundByIdModel:
+            scenario = self._change_ids_to_objects(
+                scenario_result, dataset_id, depth
+            )
+            return ScenarioOut(**scenario), ScenarioOut(**scenario)
+
         experiment_result = self.experiment_service.get_experiment(
             experiment_id=element_id,
             dataset_id=dataset_id
@@ -241,6 +294,7 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
             dataset_id: Union[int, str],
             depth: int = 0,
             multiple: bool = False,
+            source: str = "",
     ):
         """
         Send request to mongo api to get activity_executions from scenario which has activity execution id included
@@ -250,12 +304,13 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
             dataset_id (int | str): name of dataset containing activity execution
             depth: (int): specifies how many related entities will be traversed to create the response
             multiple (bool): specifies if all scenarios should be returned or just first found
+            source (str): internal argument for mongo services, used to tell the direction of model fetching
 
         Returns:
             Result of request as Scenario object
         """
-        query = {"activity_executions": activity_execution_id}
-        scenarios = self.get_multiple(dataset_id, query)
+        query = {"activity_executions": {"$elemMatch": {"$in": [activity_execution_id]}}}
+        scenarios = self.get_multiple(dataset_id, query, source=source)
         if len(scenarios) == 0:
             return NotFoundByIdModel(
                 id=activity_execution_id,
@@ -265,7 +320,7 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         if multiple:
             [
                 self._change_ids_to_objects(
-                    scenario, dataset_id, depth
+                    scenario, dataset_id, depth, source=source
                 )
                 for scenario in scenarios
             ]
@@ -273,10 +328,38 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         else:
             scenario = scenarios[0]
             scenario = self._change_ids_to_objects(
-                scenario, dataset_id, depth
+                scenario, dataset_id, depth, source=source
             )
 
             return ScenarioOut(**scenario)
+
+    def get_scenarios_by_experiment(
+            self, experiment_id: Union[int, str], dataset_id: Union[int, str], depth: int = 0, source: str = ""
+    ):
+        """
+        Send request to mongo api to get activity_executions from scenario which starts in experiment
+
+        Args:
+            experiment_id (int | str): identity of experiment where scenario starts
+            dataset_id (int | str): name of dataset containing experiment
+            depth (int): specifies how many related entities will be traversed to create the response
+            source (str): internal argument for mongo services, used to tell the direction of model fetching
+
+        Returns:
+            Result of request as Scenario object
+        """
+        query = {"experiment_id": experiment_id}
+        scenarios = self.get_multiple(dataset_id, query, source=source)
+        # print(f"\n\n{scenarios}\n\n")
+        if len(scenarios) == 0:
+            return NotFoundByIdModel(
+                id=experiment_id,
+                errors="Given experiment found, but it is not assigned to any scenario",
+            )
+
+        new_scenarios = [self._change_ids_to_objects(scenario, dataset_id, depth, source) for scenario in scenarios]
+
+        return [ScenarioOut(**scenario) for scenario in new_scenarios]
 
     def get_scenario_by_experiment(
             self, experiment_id: Union[int, str], dataset_id: Union[int, str], depth: int = 0
@@ -294,7 +377,7 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         """
         query = {"experiment_id": experiment_id}
         scenarios = self.get_multiple(dataset_id, query)
-        print(f"\n\n{scenarios}\n\n")
+        # print(f"\n\n{scenarios}\n\n")
         if len(scenarios) == 0:
             return NotFoundByIdModel(
                 id=experiment_id,
@@ -308,37 +391,51 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
 
         return ScenarioOut(**scenario)
 
-    def _change_ids_to_objects(self, scenario: dict, dataset_id: Union[int, str], depth: int):
+    def _change_ids_to_objects(self, scenario: dict, dataset_id: Union[int, str], depth: int, source: str = ""):
         """Get experiment and activity executions objects based on ids"""
         depth = max(depth - 1, 0)
-        scenario = self._change_ae_ids_to_objects(
-            scenario, dataset_id, depth, source=Collections.ACTIVITY_EXECUTION
-        )
-        scenario = self._change_experiment_id_to_object(scenario, dataset_id, depth, source=Collections.EXPERIMENT)
+        source = source if source != "" else Collections.SCENARIO
+
+        if source != Collections.ACTIVITY_EXECUTION:
+            scenario = self._change_ae_ids_to_objects(
+                scenario, dataset_id, depth, source=source
+            )
+        else:
+            scenario["activity_executions"] = None
+
+        if source != Collections.EXPERIMENT:
+            scenario = self._change_experiment_id_to_object(
+                scenario, dataset_id, depth, source=source
+            )
         return scenario
 
     def _change_ae_ids_to_objects(self, scenario: dict, dataset_id: Union[int, str], depth: int, source: str):
         """Get activity executions objects based on id list"""
         activity_execution_ids = scenario["activity_executions"]
-        scenario["activity_executions"] = [
-            self.activity_execution_service.get_activity_execution(
-                activity_execution_id=ae_id, dataset_id=dataset_id, depth=depth, source=source
-            )
-            for ae_id in activity_execution_ids
-        ]
+        scenario["activity_executions"] = []
+        for list_of_ae_ids in activity_execution_ids:
+            activity_executions = []
+            for ae_id in list_of_ae_ids:
+                activity_executions.append(self.activity_execution_service.get_activity_execution(
+                    activity_execution_id=ae_id, dataset_id=dataset_id, depth=depth, source=source
+                ))
+            scenario["activity_executions"].append(activity_executions)
+
         return scenario
 
     def _change_experiment_id_to_object(self, scenario: dict, dataset_id: Union[int, str], depth: int, source: str):
         """Get experiment object based on id"""
         experiment_id = scenario["experiment_id"]
-        scenario["experiment"] = self.experiment_service.get_experiment(experiment_id=experiment_id, dataset_id=dataset_id, depth=depth, source=source)
+        scenario["experiment"] = self.experiment_service.get_experiment(experiment_id=experiment_id,
+                                                                        dataset_id=dataset_id, depth=depth,
+                                                                        source=source)
         return scenario
 
     def _check_activity_executions(self, activity_execution_ids: List, dataset_id: Union[int, str]):
         existing_activity_executions = self.activity_execution_service.get_multiple(
             dataset_id=dataset_id,
             query={
-                "id": self.mongo_api_service. get_id_in_query(activity_execution_ids)
+                "id": self.mongo_api_service.get_id_in_query(activity_execution_ids)
             },
         )
         all_given_ae_extist = len(existing_activity_executions) == len(

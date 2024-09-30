@@ -615,7 +615,7 @@ class MongoApiService:
             {"$unwind": "$tsIds"},
             {"$project": {"_id": 0}},
         ]
-        print(match_params)
+        #print(match_params)
         db = self.client[dataset_id]
         aggregation_result = list(
             db[Collections.PARTICIPANT].aggregate(aggregation)

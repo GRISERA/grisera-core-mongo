@@ -17,6 +17,7 @@ from grisera import (
 from grisera import ActivityService
 from grisera import NotFoundByIdModel
 
+from activity.activity_model import BasicActivityOutToMongo
 from mongo_service.collection_mapping import Collections
 from mongo_service.mongo_api_service import MongoApiService
 from mongo_service.service_mixins import GenericMongoServiceMixin
@@ -113,7 +114,7 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
         """
         activity_execution_dict = activity_execution.dict()
         activity_execution_dict["id"] = str(ObjectId())
-        activity_execution = ActivityExecutionOut(**activity_execution_dict)
+        activity_execution = BasicActivityExecutionOut(**activity_execution_dict)
 
         activity_id = activity_execution.activity_id
         activity = self.get_single_dict(activity_id, dataset_id)
@@ -123,7 +124,7 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
         activity_executions.append(activity_execution)
         activity[Collections.ACTIVITY_EXECUTION] = activity_executions
 
-        self.update(activity_id, ActivityOut(**activity), dataset_id)
+        self.update(activity_id, BasicActivityOutToMongo(**activity), dataset_id)
         return ActivityExecutionOut(**activity_execution_dict)
 
     def update_activity_execution(
@@ -162,8 +163,8 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
                 errors={"errors": "activity execution not found"},
             )
         activity_executions = activity[Collections.ACTIVITY_EXECUTION]
-        activity_executions[to_update_index] = ActivityExecutionOut(**activity_execution_dict)
-        self.update(activity_id, ActivityOut(**activity), dataset_id)
+        activity_executions[to_update_index] = BasicActivityExecutionOut(**activity_execution_dict)
+        self.update(activity_id, BasicActivityOutToMongo(**activity), dataset_id)
         return ActivityExecutionOut(**activity_execution_dict)
 
     def remove_activity_execution(self, activity_execution: ActivityExecutionOut, dataset_id: Union[int, str]):
@@ -197,7 +198,7 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
             )
         del activity[Collections.ACTIVITY_EXECUTION][to_remove_index]
 
-        self.update(activity_id, ActivityOut(**activity), dataset_id)
+        self.update(activity_id, BasicActivityOutToMongo(**activity), dataset_id)
         return activity_execution
 
     def _get_activity_execution_index_from_activity(
