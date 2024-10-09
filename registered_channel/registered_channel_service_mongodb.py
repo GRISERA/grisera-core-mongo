@@ -211,7 +211,7 @@ class RegisteredChannelServiceMongoDB(
         if source != Collections.REGISTERED_DATA and has_related_rd:
             registered_channel[
                 "registered_data"
-            ] = self.channel_service.get_single_dict(
+            ] = self.registered_data_service.get_single_dict(
                 registered_channel["registered_data_id"],
                 dataset_id,
                 depth=depth - 1,

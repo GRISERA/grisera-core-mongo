@@ -20,6 +20,8 @@ from grisera import (
 )
 from grisera import ParticipantStateService
 
+from participant.participant_model import BasicParticipantOutToMongo
+
 
 class ParticipantServiceMongoDB(ParticipantService, GenericMongoServiceMixin):
     """
@@ -112,19 +114,21 @@ class ParticipantServiceMongoDB(ParticipantService, GenericMongoServiceMixin):
         return self.update(participant_id, participant, dataset_id)
 
     def add_participant_state(self, participant_state: ParticipantStateIn, dataset_id: Union[int, str]):
+        print("participant_state: ", participant_state)
         participant_state_dict = participant_state.dict()
         participant_state_dict["id"] = str(ObjectId())
-        participant_state = ParticipantStateOut(**participant_state_dict)
+        participant_state = BasicParticipantStateOut(**participant_state_dict)
 
         participant_id = participant_state.participant_id
         participant = self.get_single_dict(participant_id, dataset_id)
+        print("participant: ", participant)
         participant_states = participant.get(Collections.PARTICIPANT_STATE, [])
         if participant_states is None:
             participant_states = []
         participant_states.append(participant_state)
         participant[Collections.PARTICIPANT_STATE] = participant_states
 
-        self.update(participant_id, ParticipantOut(**participant), dataset_id)
+        self.update(participant_id, BasicParticipantOutToMongo(**participant), dataset_id)
         return BasicParticipantStateOut(**participant_state_dict)
 
     def update_participant_state(
@@ -163,8 +167,8 @@ class ParticipantServiceMongoDB(ParticipantService, GenericMongoServiceMixin):
                 errors={"errors": "participant state not found"},
             )
         participant_states = participant[Collections.PARTICIPANT_STATE]
-        participant_states[to_update_index] = ParticipantStateOut(**participant_state_dict)
-        self.update(participant_id, ParticipantOut(**participant), dataset_id)
+        participant_states[to_update_index] = BasicParticipantStateOut(**participant_state_dict)
+        self.update(participant_id, BasicParticipantOutToMongo(**participant), dataset_id)
         return ParticipantStateOut(**participant_state_dict)
 
     def remove_participant_state(self, participant_state: ParticipantStateOut, dataset_id: Union[int, str]):
@@ -198,7 +202,7 @@ class ParticipantServiceMongoDB(ParticipantService, GenericMongoServiceMixin):
             )
         del participant[Collections.PARTICIPANT_STATE][to_remove_index]
 
-        self.update(participant_id, ParticipantOut(**participant), dataset_id)
+        self.update(participant_id, BasicParticipantOutToMongo(**participant), dataset_id)
         return participant_state
 
     def _get_participant_state_index_from_participant(

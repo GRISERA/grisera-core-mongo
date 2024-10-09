@@ -308,8 +308,8 @@ f
         has_participation = recording["participation_id"] is not None
         if source != Collections.PARTICIPATION and has_participation:
             recording["participation"] = self.participation_service.get_single_dict(
-                channel_id=recording["participation_id"],
-                dataset_id=dataset_id,
+                recording["participation_id"],
+                dataset_id,
                 depth=depth - 1,
                 source=Collections.RECORDING,
             )
@@ -321,7 +321,7 @@ f
         Observable information is embedded within recording model
         """
         has_observable_informations = (
-            recording[Collections.OBSERVABLE_INFORMATION] is not None
+            Collections.OBSERVABLE_INFORMATION in recording and recording[Collections.OBSERVABLE_INFORMATION] is not None
         )
         if source != Collections.OBSERVABLE_INFORMATION and has_observable_informations:
             for oi in recording[Collections.OBSERVABLE_INFORMATION]:

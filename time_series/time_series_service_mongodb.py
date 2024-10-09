@@ -16,6 +16,7 @@ from grisera import (
     TimeSeriesTransformationIn,
     SignalIn,
     SignalValueNodesIn,
+    Type,
 )
 from grisera import NotFoundByIdModel
 from grisera import TimeSeriesService
@@ -74,9 +75,14 @@ class TimeSeriesServiceMongoDB(TimeSeriesService):
             return NotFoundByIdModel(errors={"errors": "given measure does not exist"})
 
         if len(time_series.signal_values) == 0:
-            time_series.signal_values = [
-                SignalIn(signal_value=SignalValueNodesIn(value=1), timestamp=1)
-            ]
+            if time_series.type == Type.timestamp:
+                time_series.signal_values = [
+                    SignalIn(signal_value=SignalValueNodesIn(value=1), timestamp=1)
+                ]
+            else:
+                time_series.signal_values = [
+                    SignalIn(signal_value=SignalValueNodesIn(value=1), start_timestamp=1, end_timestamp=2)
+                ]
         created_ts_id = self.mongo_api_service.create_time_series(
             time_series_in=time_series,
             dataset_id=dataset_id,

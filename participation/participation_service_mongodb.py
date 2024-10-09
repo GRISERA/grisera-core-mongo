@@ -175,14 +175,14 @@ class ParticipationServiceMongoDB(ParticipationService, GenericMongoServiceMixin
                 participation["participant_state_id"],
                 dataset_id,
                 depth=depth - 1,
-                source=Collections.PARTICIPATION,
+                source=Collections.ACTIVITY_EXECUTION,
             )
 
     def _add_related_activity_executions(
         self, participation: dict, dataset_id: Union[int, str], depth: int, source: str
     ):
         has_related_ae = participation["activity_execution_id"] is not None
-        if source != Collections.ACTIVITY_EXECUTION and has_related_ae:
+        if source != Collections.ACTIVITY_EXECUTION and source != Collections.EXPERIMENT and has_related_ae:
             participation[
                 "activity_execution"
             ] = self.activity_execution_service.get_single_dict(

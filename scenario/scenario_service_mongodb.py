@@ -227,6 +227,23 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
             activity_execution_id, dataset_id
         )
 
+    def delete_scenario_execution(self, scenario_execution_id: Union[int, str], dataset_id: Union[int, str]):
+        scenario = self.get_scenario_by_activity_execution(scenario_execution_id, dataset_id)
+        if type(scenario) is NotFoundByIdModel:
+            return scenario
+
+        scenario_dict = self.get_scenario_dict_by_scenario_id(scenario.id, dataset_id)
+        for activity_executions_list in scenario_dict["activity_executions"]:
+            if scenario_execution_id in activity_executions_list:
+                scenario_dict["activity_executions"].remove(activity_executions_list)
+                break
+
+        self.mongo_api_service.update_document_with_dict(
+            Collections.SCENARIO, scenario.id, scenario_dict, dataset_id
+        )  # update must be performed with dict, as model is different from saved scenarios (only ae ids are stored)
+
+        return self.get_scenario(scenario.id, dataset_id)
+
     def get_scenario_dict_by_scenario_id(self, scenario_id: Union[int, str], dataset_id: Union[int, str]):
         """Return scenario dict directly from db (without parsing ae ids to objects)"""
         return self.mongo_api_service.get_document(scenario_id, Collections.SCENARIO, dataset_id)
@@ -309,8 +326,12 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         Returns:
             Result of request as Scenario object
         """
-        query = {"activity_executions": {"$elemMatch": {"$in": [activity_execution_id]}}}
+        #{'activity_executions': {'$elemMatch': {'$in': ['6701d1efa76e03613a906b53']}}}
+        #{experiment_id: ObjectId(66f8ae7d6568577dbde13872)}
+        query = {"activity_executions": {'$elemMatch': {'$elemMatch': {'$eq': activity_execution_id}}}}
+        print(query)
         scenarios = self.get_multiple(dataset_id, query, source=source)
+        print(scenarios)
         if len(scenarios) == 0:
             return NotFoundByIdModel(
                 id=activity_execution_id,

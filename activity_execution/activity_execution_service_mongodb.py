@@ -295,7 +295,7 @@ class ActivityExecutionServiceMongoDB(
         print(f"Source of request: {source}")
 
         related_scenarios = self.scenario_service.get_scenario_by_activity_execution(
-            activity_execution["id"], dataset_id, depth=depth, multiple=True, source=Collections.SCENARIO
+            activity_execution["id"], dataset_id, depth=depth, multiple=True, source=source
         )
         if type(related_scenarios) is NotFoundByIdModel:
             return
@@ -316,7 +316,7 @@ class ActivityExecutionServiceMongoDB(
             dataset_id,
             {"activity_execution_id": activity_execution["id"]},
             depth=depth - 1,
-            source=Collections.PARTICIPANT,
+            source=source,
         )
 
     def _add_related_arrangement(
@@ -332,7 +332,7 @@ class ActivityExecutionServiceMongoDB(
             activity_execution["arrangement_id"],
             dataset_id,
             depth=depth - 1,
-            source=Collections.ARRANGEMENT,
+            source=source,
         )
 
     def _add_activity(

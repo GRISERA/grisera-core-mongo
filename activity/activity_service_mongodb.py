@@ -225,7 +225,7 @@ class ActivityServiceMongoDB(ActivityService, GenericMongoServiceMixin):
         """
         Observable information is embedded within recording model
         """
-        has_activity_executions = activity[Collections.ACTIVITY_EXECUTION] is not None
+        has_activity_executions = Collections.ACTIVITY_EXECUTION in activity and activity[Collections.ACTIVITY_EXECUTION] is not None
         if source != Collections.ACTIVITY_EXECUTION and has_activity_executions:
             for ae in activity[Collections.ACTIVITY_EXECUTION]:
                 self.activity_execution_service._add_related_documents(

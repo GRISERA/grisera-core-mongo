@@ -9,6 +9,7 @@ from grisera import (
     SignalIn,
     SignalValueNodesIn,
     TimeSeriesIn,
+    Type,
 )
 from grisera import NotFoundByIdModel
 from mongo_service.collection_mapping import get_collection_name, Collections
@@ -365,12 +366,12 @@ class MongoApiService:
                     additional_properties=document["additional_properties"],
                 ),
             )
-        else:
+        else:#some problem here document["end_timestamp"] is not set for some reason
             return SignalIn(
                 start_timestamp=document[self.TIMESTAMP_FIELD]
                 .replace(tzinfo=timezone.utc)
                 .timestamp(),
-                end_timestamp=document["end_timestamp"]
+                end_timestamp=(document["end_timestamp"] if "end_timestamp" in document else document[self.TIMESTAMP_FIELD])
                 .replace(tzinfo=timezone.utc)
                 .timestamp(),
                 signal_value=SignalValueNodesIn(
@@ -453,6 +454,7 @@ class MongoApiService:
         if not len(non_empty_lists):
             return None
 
+
         matching_ts_ids = set(non_empty_lists[0])
         for ts_ids in non_empty_lists[1:]:
             matching_ts_ids = matching_ts_ids.intersection(set(ts_ids))
@@ -509,6 +511,13 @@ class MongoApiService:
         results = []
         for ar in aggregation_result:
             results.extend(ar["tsIds"])
+
+        # print('\nlist of participant_params: ', participant_params)
+        # print('\nlist of match_params: ', match_params)
+        # print('\naggregation: ', aggregation)
+        # print('\naggregation_result: ', aggregation_result)
+        # print('\nresults: ', results)
+
         return results
 
     def _get_participant_aggregation(self, match_params):
