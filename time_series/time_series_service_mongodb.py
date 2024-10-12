@@ -239,7 +239,7 @@ class TimeSeriesServiceMongoDB(TimeSeriesService):
                 errors={"errors": "given observable information does not exist"}
             )
 
-        related_measure = self.measure_service.get_measure(time_series.measure_id)
+        related_measure = self.measure_service.get_measure(time_series.measure_id, dataset_id)
         related_measure_exists = type(related_measure) is not NotFoundByIdModel
         if time_series.measure_id is not None and not related_measure_exists:
             return TimeSeriesOut(errors={"errors": "given measure does not exist"})

@@ -228,6 +228,7 @@ f
         Returns:
             Updated observable information
         """
+        self.remove_observable_information(ObservableInformationOut(**observable_information_dict), dataset_id)
         recording_id = observable_information_dict["recording_id"]
         recording = self.get_single_dict(recording_id, dataset_id)
         if type(recording) is NotFoundByIdModel:
@@ -238,16 +239,8 @@ f
                 },
             )
 
-        to_update_index = self._get_observable_information_index_from_recording(
-            recording, observable_information_id
-        )
-        if to_update_index is None:
-            return NotFoundByIdModel(
-                id=observable_information_id,
-                errors={"errors": "observable information not found"},
-            )
         observable_informations = recording[Collections.OBSERVABLE_INFORMATION]
-        observable_informations[to_update_index] = ObservableInformationOut(**observable_information_dict)
+        observable_informations.append(ObservableInformationOut(**observable_information_dict))
         self.update(recording_id, RecordingOut(**recording), dataset_id)
         return ObservableInformationOut(**observable_information_dict)
 
@@ -263,9 +256,10 @@ f
         Returns:
             Removed observable information
         """
-        recording_id = observable_information.recording_id
-        recording = self.get_single_dict(recording_id, dataset_id)
-        if type(recording) is NotFoundByIdModel:
+        observable_information_old = self.observable_information_service.get_observable_information(observable_information.id, dataset_id)
+        recording_old_id = observable_information_old.recording_id
+        recording_old = self.get_single_dict(recording_old_id, dataset_id)
+        if type(recording_old) is NotFoundByIdModel:
             return NotFoundByIdModel(
                 id=observable_information.id,
                 errors={
@@ -273,17 +267,18 @@ f
                 },
             )
 
+
         to_remove_index = self._get_observable_information_index_from_recording(
-            recording, observable_information.id
+            recording_old, observable_information.id
         )
         if to_remove_index is None:
             return NotFoundByIdModel(
                 id=observable_information.id,
                 errors={"errors": "observable information not found"},
             )
-        del recording[Collections.OBSERVABLE_INFORMATION][to_remove_index]
+        del recording_old[Collections.OBSERVABLE_INFORMATION][to_remove_index]
 
-        self.update(recording_id, RecordingOut(**recording), dataset_id)
+        self.update(recording_old_id, RecordingOut(**recording_old), dataset_id)
         return observable_information
 
     def _add_related_documents(self, recording: dict, dataset_id: Union[int, str], depth: int, source: str):
