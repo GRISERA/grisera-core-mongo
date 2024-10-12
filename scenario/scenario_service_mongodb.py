@@ -326,12 +326,8 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         Returns:
             Result of request as Scenario object
         """
-        #{'activity_executions': {'$elemMatch': {'$in': ['6701d1efa76e03613a906b53']}}}
-        #{experiment_id: ObjectId(66f8ae7d6568577dbde13872)}
         query = {"activity_executions": {'$elemMatch': {'$elemMatch': {'$eq': activity_execution_id}}}}
-        #print(query)
         scenarios = self.get_multiple(dataset_id, query, source=source)
-        #print(scenarios)
         if len(scenarios) == 0:
             return NotFoundByIdModel(
                 id=activity_execution_id,
@@ -371,7 +367,6 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         """
         query = {"experiment_id": experiment_id}
         scenarios = self.get_multiple(dataset_id, query, source=source)
-        # print(f"\n\n{scenarios}\n\n")
         if len(scenarios) == 0:
             return NotFoundByIdModel(
                 id=experiment_id,
@@ -398,7 +393,6 @@ class ScenarioServiceMongoDB(ScenarioService, GenericMongoServiceMixin):
         """
         query = {"experiment_id": experiment_id}
         scenarios = self.get_multiple(dataset_id, query)
-        # print(f"\n\n{scenarios}\n\n")
         if len(scenarios) == 0:
             return NotFoundByIdModel(
                 id=experiment_id,

@@ -1,4 +1,3 @@
-from time import sleep
 from grisera import activity_router
 from grisera import activity_execution_router
 from grisera import arrangement_router
@@ -25,8 +24,6 @@ from grisera import scenario_router
 from grisera import measure_name_router
 from grisera import channel_router
 from grisera import dataset_router
-from setup import SetupNodes
-import os
 
 app = FastAPI(
     title="GRISERA API",
@@ -42,7 +39,7 @@ app.add_middleware(
     allow_origins=["*"],  # or restrict to specific domains in production
     allow_credentials=True,
     allow_methods=["*"],  # Allow all methods (GET, POST, etc.)
-    allow_headers=["*"],  # Allow specific headers including Authorization ["Authorization", "Content-Type"]
+    allow_headers=["Authorization", "Content-Type"],  # Allow specific headers including Authorization ["Authorization", "Content-Type"]
 )
 
 app.include_router(activity_router)
@@ -69,21 +66,6 @@ app.include_router(dataset_router)
 
 app.dependency_overrides[service.get_service_factory] = mongo_service.get_service_factory
 
-
-# @app.on_event("startup")
-# async def startup_event():
-#     startup = SetupNodes()
-#     sleep(2)
-#     if not os.path.exists("lock"):
-#         open("lock", "w").write("Busy")
-#         sleep(2)
-#         startup.set_activities()
-#         startup.set_channels()
-#         startup.set_arrangements()
-#         startup.set_modalities()
-#         startup.set_life_activities()
-#         startup.set_measure_names()
-#         os.remove("lock")
 
 
 @app.get("/", tags=["root"])

@@ -292,7 +292,6 @@ class ActivityExecutionServiceMongoDB(
     ):
         if depth <= 0 or source == Collections.EXPERIMENT or source == Collections.SCENARIO:
             return
-        #print(f"Source of request: {source}")
 
         related_scenarios = self.scenario_service.get_scenario_by_activity_execution(
             activity_execution["id"], dataset_id, depth=depth, multiple=True, source=source

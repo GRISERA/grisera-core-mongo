@@ -36,7 +36,7 @@ class MongoApiService:
         self.db = db
         self.client = client
 
-    #ok
+
     def create_document(self, data_in: BaseModel, dataset_id: Union[int, str]):
         """
         Create new document from model object.
@@ -45,7 +45,7 @@ class MongoApiService:
         data_as_dict = data_in.dict()
         return self.create_document_from_dict(data_as_dict, collection_name, dataset_id)
 
-    # ok
+
     def create_document_from_dict(self, document_dict: dict, collection_name: str, dataset_id: Union[int, str]):
         """
         Create new document from a dictionary. Id fields are converted to ObjectId type.
@@ -55,7 +55,7 @@ class MongoApiService:
         created_id = db[collection_name].insert_one(document_dict).inserted_id
         return str(created_id)
 
-    #ok
+
     def get_document(self, id: Union[str, int], collection_name: str, dataset_id: Union[int, str], *args, **kwargs):
         """
         Load single document. Output id fields are converted from ObjectId type to str.
@@ -74,7 +74,7 @@ class MongoApiService:
         self._update_mongo_output_id(result_dict)
         return result_dict
 
-    #ok
+
     def get_documents(self, collection_name: str, dataset_id: Union[int, str], query: dict = {}, *args, **kwargs):
         """
         Load many documents. Output id fields are converted from ObjectId type to str.
@@ -90,7 +90,7 @@ class MongoApiService:
 
         return results
 
-    #ok
+
     def update_document(self, id: Union[str, int], data_to_update: BaseModel, dataset_id: Union[int, str]):
         """
         Update document.
@@ -99,7 +99,7 @@ class MongoApiService:
         data_as_dict = data_to_update.dict()
         self.update_document_with_dict(collection_name, id, data_as_dict, dataset_id)
 
-    #ok
+
     def update_document_with_dict(
         self, collection_name: str, id: Union[str, int], new_document: dict, dataset_id: Union[int, str]
     ):
@@ -114,7 +114,7 @@ class MongoApiService:
             new_document,
         )
 
-    #ok
+
     def delete_document(self, object_to_delete: BaseModel, dataset_id: Union[int, str]):
         """
         Delete document in collection. Given model must have id field.
@@ -366,7 +366,7 @@ class MongoApiService:
                     additional_properties=document["additional_properties"],
                 ),
             )
-        else:#some problem here document["end_timestamp"] is not set for some reason
+        else:
             return SignalIn(
                 start_timestamp=document[self.TIMESTAMP_FIELD]
                 .replace(tzinfo=timezone.utc)
@@ -512,12 +512,6 @@ class MongoApiService:
         for ar in aggregation_result:
             results.extend(ar["tsIds"])
 
-        # print('\nlist of participant_params: ', participant_params)
-        # print('\nlist of match_params: ', match_params)
-        # print('\naggregation: ', aggregation)
-        # print('\naggregation_result: ', aggregation_result)
-        # print('\nresults: ', results)
-
         return results
 
     def _get_participant_aggregation(self, match_params):
@@ -624,7 +618,6 @@ class MongoApiService:
             {"$unwind": "$tsIds"},
             {"$project": {"_id": 0}},
         ]
-        #print(match_params)
         db = self.client[dataset_id]
         aggregation_result = list(
             db[Collections.PARTICIPANT].aggregate(aggregation)

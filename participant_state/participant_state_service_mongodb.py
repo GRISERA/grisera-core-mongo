@@ -82,7 +82,7 @@ class ParticipantStateServiceMongoDB(ParticipantStateService, GenericMongoServic
                     self._add_related_documents(
                         participant_state,
                         dataset_id,
-                        depth,  # depth - 1
+                        depth,
                         source,
                         participant_results,
                     )
