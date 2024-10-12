@@ -175,7 +175,7 @@ class ParticipationServiceMongoDB(ParticipationService, GenericMongoServiceMixin
                 participation["participant_state_id"],
                 dataset_id,
                 depth=depth - 1,
-                source=Collections.ACTIVITY_EXECUTION,
+                source=Collections.PARTICIPATION,
             )
 
     def _add_related_activity_executions(

@@ -285,7 +285,7 @@ class ParticipantStateServiceMongoDB(ParticipantStateService, GenericMongoServic
         if depth > 0:
             self._add_related_personalities(participant_state, dataset_id, depth, source)
             self._add_related_appearances(participant_state, dataset_id, depth, source)
-#            self._add_related_participations(participant_state, dataset_id, depth, source)
+            self._add_related_participations(participant_state, dataset_id, depth, source)
             self._add_related_participant(participant_state, dataset_id, depth, source, participant)
 
     def _add_related_participant(
@@ -317,7 +317,7 @@ class ParticipantStateServiceMongoDB(ParticipantStateService, GenericMongoServic
             participant_state["appearances"] = self.appearance_service.get_multiple(
                 dataset_id,
                 {
-                    "id": self.mongo_api_service.get_id_in_query(
+                    "_id": self.mongo_api_service.get_id_in_query(
                         participant_state["appearance_ids"]
                     )
                 },
@@ -334,7 +334,7 @@ class ParticipantStateServiceMongoDB(ParticipantStateService, GenericMongoServic
             participant_state["personalities"] = self.personality_service.get_multiple(
                 dataset_id,
                 {
-                    "id": self.mongo_api_service.get_id_in_query(
+                    "_id": self.mongo_api_service.get_id_in_query(
                         participant_state["personality_ids"]
                     )
                 },
