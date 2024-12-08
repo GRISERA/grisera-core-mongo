@@ -28,7 +28,6 @@ from registered_channel.registered_channel_service_mongodb import (
 )
 from registered_data.registered_data_service_mongodb import RegisteredDataServiceMongoDB
 from time_series.time_series_service_mongodb import TimeSeriesServiceMongoDB
-from permission_service_auth_ms.permission_service_auth_ms import PermissionServiceAuthMS
 
 from grisera import ActivityService
 from grisera import ActivityExecutionService
@@ -53,7 +52,6 @@ from grisera import RegisteredDataService
 from grisera import ScenarioService
 from grisera import TimeSeriesService
 from grisera import DatasetService
-from grisera import PermissionService
 
 
 class MongoServiceFactory(ServiceFactory):
@@ -79,7 +77,6 @@ class MongoServiceFactory(ServiceFactory):
         self.activity_service = ActivityServiceMongoDB()
         self.experiment_service = ExperimentServiceMongoDB()
         self.scenario_service = ScenarioServiceMongoDB()
-        self.permission_service = PermissionServiceAuthMS()
 
         service_pairs = [
             ("registered_channel", "channel"),
@@ -168,9 +165,6 @@ class MongoServiceFactory(ServiceFactory):
 
     def get_time_series_service(self) -> TimeSeriesService:
         return self.time_series_service
-
-    def get_permissions_service(self) -> PermissionService:
-        return self.permission_service
 
     def _pair_services(
         self, first_service_collection_name: str, second_service_collection_name: str
