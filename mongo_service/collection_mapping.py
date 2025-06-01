@@ -66,6 +66,8 @@ class Collections(str, Enum):
     ARRANGEMENT = "arrangements"
     CHANNEL = "channels"
     EXPERIMENT = "experiments"
+    IMPORT_JOBS = "import_jobs"
+    IMPORT_ERRORS = "import_errors"
     LIFE_ACTIVITY = "life_activities"
     MEASURE = "measures"
     MEASURE_NAME = "measure_names"
