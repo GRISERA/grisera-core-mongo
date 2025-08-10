@@ -46,6 +46,7 @@ from grisera import (
     TimeSeriesPropertyIn,
     TimeSeriesRelationIn,
 )
+from grisera.file.file_model import FileIn
 from enum import Enum
 
 """
@@ -80,6 +81,7 @@ class Collections(str, Enum):
     REGISTERED_DATA = "registered_data"
     SCENARIO = "scenarios"
     TIME_SERIES = "timeSeries"
+    FILES = "files"
 
 
 SUPERCLASSES_TO_COLLECTION_NAMES = {
@@ -116,6 +118,7 @@ SUPERCLASSES_TO_COLLECTION_NAMES = {
     ScenarioOut: Collections.SCENARIO,
     TimeSeriesPropertyIn: Collections.TIME_SERIES,
     TimeSeriesRelationIn: Collections.TIME_SERIES,
+    FileIn: Collections.FILES,
 }
 
 
