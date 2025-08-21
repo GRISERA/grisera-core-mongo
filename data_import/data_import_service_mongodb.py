@@ -3,7 +3,7 @@ import json
 from datetime import datetime
 import threading
 
-from data_import.utils import decode_file_content, remove_prefix, generate_content_hash
+from data_import.utils import decode_file_content, remove_prefix
 from data_import.entity_converters import ENTITY_CONVERTERS, BaseEntityConverter
 from data_import.entity_type_mapping import EntityTypeMapping
 
@@ -119,8 +119,6 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         try:
             print("📝 Creating import record in database...")
             # Generuj hash zawartości pliku do identyfikacji duplikatów - użycie utils
-            content_hash = generate_content_hash(import_data.file_content)
-            print(f"🔐 Generated content hash: {content_hash[:16]}...")
 
             initial_status = ImportStatus.PENDING
             import_record_data = {
@@ -133,13 +131,12 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 "imported_records": 0,
                 "failed_records": 0,
                 "error_count": 0,
-                "content_hash": content_hash,
                 "experiment_id": import_data.experiment_id
             }
 
             import_id = self.mongo_api_service.create_document_from_dict(
                 import_record_data,
-                Collections.IMPORT_JOBS.value,  # "import_jobs"
+                Collections.IMPORT_JOBS.value,
                 import_data.dataset_id
             )
             print(f"✅ Import job created with ID: {import_id}, status: {initial_status.value}")
@@ -153,7 +150,6 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             thread.start()
             print(f"🧵 Background thread started for import ID: {import_id}")
 
-            # Zwróć natychmiast ze statusem PENDING
             result = DataImportOut(
                 id=import_id,
                 file_name=import_data.file_name,
@@ -541,7 +537,14 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             elif entity_type == "Participant":
                 result = self.services.get_participant_service().save_participant(grisera_object, dataset_id)
             elif entity_type == "ParticipantState":
-                result = self.services.get_participant_state_service().save_participant_state(grisera_object, dataset_id)
+                # Specjalna logika dla ParticipantState - mapuj participant_id z source ID na MongoDB ID
+                result = self._save_participant_state_with_participant_mapping(grisera_object, dataset_id, import_id)
+                if result is None:
+                    print(f"⚠️ ParticipantState skipped - incomplete mapping")
+                    return None
+                saved_id = getattr(result, 'id', 'unknown')
+                print(f"✅ {entity_type} saved successfully with ID: {saved_id}")
+                return str(saved_id)
             elif entity_type == "TimeSeries":
                 result = self.services.get_time_series_service().save_time_series(grisera_object, dataset_id)
             elif entity_type == "Experiment":
@@ -1295,26 +1298,50 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
     def _find_activity_execution_by_source_id(self, source_id: str, dataset_id: str) -> str:
         """
-        Znajduje ActivityExecution w MongoDB po source_id i zwraca jego MongoDB ID
+        Znajduje ActivityExecution w MongoDB po source_id i zwraca jego MongoDB ID.
+        
+        POPRAWKA: ActivityExecution są embedded w Activity documents, nie w osobnej kolekcji!
         """
         try:
+            print(f"🔍 Searching for ActivityExecution with source_id: {source_id}")
+            
             query_filter = {
-                "additional_properties": {
+                "activity_executions": {
                     "$elemMatch": {
-                        "key": "source_entity_ref",
-                        "value": f":{source_id}"
+                        "additional_properties": {
+                            "$elemMatch": {
+                                "key": "source_entity_ref",
+                                "value": f":{source_id}"
+                            }
+                        }
                     }
                 }
             }
             
-            activity_executions = self.mongo_api_service.get_documents(
-                collection_name=Collections.ACTIVITY_EXECUTION.value,
+            activities_with_matching_executions = self.mongo_api_service.get_documents(
+                collection_name=Collections.ACTIVITY.value,  # SZUKAJ W ACTIVITIES, NIE ACTIVITY_EXECUTIONS!
                 dataset_id=dataset_id,
                 query=query_filter
             )
             
-            if activity_executions and len(activity_executions) > 0:
-                return str(activity_executions[0].get("id", ""))
+            print(f"🔍 Found {len(activities_with_matching_executions) if activities_with_matching_executions else 0} activities with matching ActivityExecution")
+            
+            # Przeszukaj embedded activity_executions w znalezionych activities
+            for activity_doc in activities_with_matching_executions:
+                activity_executions = activity_doc.get("activity_executions", [])
+                
+                for ae_doc in activity_executions:
+                    # Sprawdź czy ten ActivityExecution ma odpowiedni source_entity_ref
+                    additional_properties = ae_doc.get("additional_properties", [])
+                    
+                    for prop in additional_properties:
+                        if (prop.get("key") == "source_entity_ref" and 
+                            prop.get("value") == f":{source_id}"):
+                            ae_id = str(ae_doc.get("id", ""))
+                            print(f"✅ Found ActivityExecution: {source_id} -> MongoDB ID: {ae_id}")
+                            return ae_id
+            
+            print(f"❌ ActivityExecution with source_id '{source_id}' not found in any activity")
             return ""
             
         except Exception as e:
@@ -1326,6 +1353,8 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         Znajduje ParticipantState w MongoDB po source_id i zwraca jego MongoDB ID
         """
         try:
+            print(f"🔍 Searching for ParticipantState with source_id: {source_id}")
+            
             query_filter = {
                 "additional_properties": {
                     "$elemMatch": {
@@ -1335,14 +1364,75 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 }
             }
             
+            print(f"🔍 Query filter: {query_filter}")
+            
             participant_states = self.mongo_api_service.get_documents(
                 collection_name=Collections.PARTICIPANT_STATE.value,
                 dataset_id=dataset_id,
                 query=query_filter
             )
             
+            print(f"🔍 Found {len(participant_states) if participant_states else 0} participant states")
+            
             if participant_states and len(participant_states) > 0:
-                return str(participant_states[0].get("id", ""))
+                ps_id = str(participant_states[0].get("id", ""))
+                print(f"✅ Found ParticipantState: {source_id} -> MongoDB ID: {ps_id}")
+                return ps_id
+            
+            # DEBUG: Sprawdź czy są jakiekolwiek ParticipantState z source_entity_ref
+            debug_query = {
+                "additional_properties": {
+                    "$elemMatch": {
+                        "key": "source_entity_ref"
+                    }
+                }
+            }
+            
+            all_participant_states = self.mongo_api_service.get_documents(
+                collection_name=Collections.PARTICIPANT_STATE.value,
+                dataset_id=dataset_id,
+                query=debug_query
+            )
+            
+            print(f"🔍 DEBUG: Found {len(all_participant_states) if all_participant_states else 0} total participant states with source_entity_ref")
+            for i, ps in enumerate(all_participant_states[:3]):  # Pokaż pierwsze 3
+                for prop in ps.get("additional_properties", []):
+                    if prop.get("key") == "source_entity_ref":
+                        print(f"🔍 DEBUG: ParticipantState {i+1} has source_entity_ref: '{prop.get('value')}'")
+                        break
+            
+            # FALLBACK: Jeśli source_id kończy się na "State", spróbuj znaleźć przez Participant
+            if source_id.endswith("State"):
+                participant_base_id = source_id.replace("State", "")
+                print(f"🔄 FALLBACK: Trying to find ParticipantState through Participant with base ID: {participant_base_id}")
+                
+                # Krok 1: Znajdź Participant z base ID
+                participant_mongo_id = self._find_participant_by_source_id(participant_base_id, dataset_id)
+                
+                if participant_mongo_id:
+                    print(f"✅ Found Participant {participant_base_id} -> MongoDB ID: {participant_mongo_id}")
+                    
+                    # Krok 2: Znajdź ParticipantState który ma participant_id wskazujący na tego Participant
+                    from bson import ObjectId
+                    ps_query = {
+                        "participant_id": ObjectId(participant_mongo_id)
+                    }
+                    
+                    participant_states_by_participant = self.mongo_api_service.get_documents(
+                        collection_name=Collections.PARTICIPANT_STATE.value,
+                        dataset_id=dataset_id,
+                        query=ps_query
+                    )
+                    
+                    if participant_states_by_participant and len(participant_states_by_participant) > 0:
+                        ps_id = str(participant_states_by_participant[0].get("id", ""))
+                        print(f"✅ FALLBACK SUCCESS: Found ParticipantState through Participant: {source_id} -> {ps_id}")
+                        return ps_id
+                    else:
+                        print(f"❌ FALLBACK: No ParticipantState found for Participant {participant_mongo_id}")
+                else:
+                    print(f"❌ FALLBACK: Participant {participant_base_id} not found")
+            
             return ""
             
         except Exception as e:
@@ -1354,6 +1444,8 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         Znajduje Participant w MongoDB po source_id i zwraca jego MongoDB ID
         """
         try:
+            print(f"🔍 Searching for Participant with source_id: {source_id}")
+            
             query_filter = {
                 "additional_properties": {
                     "$elemMatch": {
@@ -1363,14 +1455,43 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 }
             }
             
+            print(f"🔍 Query filter: {query_filter}")
+            
             participants = self.mongo_api_service.get_documents(
                 collection_name=Collections.PARTICIPANT.value,
                 dataset_id=dataset_id,
                 query=query_filter
             )
             
+            print(f"🔍 Found {len(participants) if participants else 0} participants")
+            
             if participants and len(participants) > 0:
-                return str(participants[0].get("id", ""))
+                participant_id = str(participants[0].get("id", ""))
+                print(f"✅ Found Participant: {source_id} -> MongoDB ID: {participant_id}")
+                return participant_id
+            
+            # Jeśli nie znaleziono, spróbuj znaleźć wszystkie participants z import_job_id aby zobaczyć co mamy
+            debug_query = {
+                "additional_properties": {
+                    "$elemMatch": {
+                        "key": "source_entity_ref"
+                    }
+                }
+            }
+            
+            all_participants = self.mongo_api_service.get_documents(
+                collection_name=Collections.PARTICIPANT.value,
+                dataset_id=dataset_id,
+                query=debug_query
+            )
+            
+            print(f"🔍 DEBUG: Found {len(all_participants) if all_participants else 0} total participants with source_entity_ref")
+            for i, participant in enumerate(all_participants[:3]):  # Pokaż pierwsze 3
+                for prop in participant.get("additional_properties", []):
+                    if prop.get("key") == "source_entity_ref":
+                        print(f"🔍 DEBUG: Participant {i+1} has source_entity_ref: '{prop.get('value')}'")
+                        break
+            
             return ""
             
         except Exception as e:
@@ -1382,9 +1503,9 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         Zapisuje Participation z mapowaniem source IDs na MongoDB IDs.
         PROSTE MAPOWANIE: source_entity_ref -> MongoDB ID
         
-        UWAGA: Nazwy pól w modelu ParticipationIn są mylące:
-        - activity_execution_id = MongoDB ID ActivityExecution ✅
-        - participant_state_id = MongoDB ID Participant (z kolekcji participants, NIE participant_states!)
+        MAPOWANIE:
+        - activity_execution_id: source_id -> MongoDB ID ActivityExecution (embedded w activities)
+        - participant_state_id: source_id -> MongoDB ID ParticipantState (kolekcja participant_states)
         """
         try:
             print(f"💾 Saving Participation with simple ID mapping...")
@@ -1406,29 +1527,29 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                     print(f"❌ ActivityExecution not found for source ID: {ae_source_id}")
                     return None
             
-            # KROK 2: Mapuj participant_state_id przez source_entity_ref -> ale na Participant ID!
-            mapped_participant_id = grisera_object.participant_state_id
+            # KROK 2: Mapuj participant_state_id przez source_entity_ref -> na ParticipantState ID!
+            mapped_participant_state_id = grisera_object.participant_state_id
             if grisera_object.participant_state_id and str(grisera_object.participant_state_id).startswith(":"):
-                # To jest source ID, znajdź MongoDB ID Participant (NIE ParticipantState!)
-                participant_source_id = str(grisera_object.participant_state_id).replace(":", "")
-                participant_mongo_id = self._find_participant_by_source_id(participant_source_id, dataset_id)
+                # To jest source ID, znajdź MongoDB ID ParticipantState
+                participant_state_source_id = str(grisera_object.participant_state_id).replace(":", "")
+                participant_state_mongo_id = self._find_participant_state_by_source_id(participant_state_source_id, dataset_id)
                 
-                if participant_mongo_id:
-                    mapped_participant_id = participant_mongo_id
-                    print(f"✅ Mapped participant_state_id: {grisera_object.participant_state_id} -> Participant ID: {participant_mongo_id}")
+                if participant_state_mongo_id:
+                    mapped_participant_state_id = participant_state_mongo_id
+                    print(f"✅ Mapped participant_state_id: {grisera_object.participant_state_id} -> ParticipantState ID: {participant_state_mongo_id}")
                 else:
-                    print(f"❌ Participant not found for source ID: {participant_source_id}")
+                    print(f"❌ ParticipantState not found for source ID: {participant_state_source_id}")
                     return None
             
-            if not mapped_activity_execution_id or not mapped_participant_id:
+            if not mapped_activity_execution_id or not mapped_participant_state_id:
                 print(f"❌ Missing required IDs after mapping")
                 return None
             
             # KROK 4: Utwórz nowy obiekt Participation z mapowanymi MongoDB IDs
             from grisera import ParticipationIn
             mapped_participation = ParticipationIn(
-                activity_execution_id=mapped_activity_execution_id,  # MongoDB ID ActivityExecution
-                participant_state_id=mapped_participant_id           # MongoDB ID Participant (z kolekcji participants!)
+                activity_execution_id=mapped_activity_execution_id,     # MongoDB ID ActivityExecution
+                participant_state_id=mapped_participant_state_id        # MongoDB ID ParticipantState
             )
             
             # KROK 5: Zapisz Participation używając serwisu
@@ -1436,7 +1557,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             saved_participation_id = str(getattr(result, 'id', 'unknown'))
             print(f"✅ Participation saved with MongoDB ID: {saved_participation_id}")
             
-            print(f"🔗 Final mapping: ActivityExecution({grisera_object.activity_execution_id} -> {mapped_activity_execution_id}), Participant({grisera_object.participant_state_id} -> {mapped_participant_id})")
+            print(f"🔗 Final mapping: ActivityExecution({grisera_object.activity_execution_id} -> {mapped_activity_execution_id}), ParticipantState({grisera_object.participant_state_id} -> {mapped_participant_state_id})")
             
             return result
             
@@ -2189,7 +2310,19 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                     )
                     # Kontynuuj z oryginalnym ID - może zostanie utworzone później
             
-            # KROK 4: Utwórz nowy obiekt Recording z mapowanymi IDs
+            # KROK 4: Sprawdź czy mapped_participation_id jest prawidłowym MongoDB ObjectId
+            if mapped_participation_id and mapped_participation_id.startswith(":"):
+                print(f"❌ Invalid participation_id format: {mapped_participation_id} - skipping Recording")
+                self._log_import_error(
+                    import_id,
+                    dataset_id,
+                    "INVALID_PARTICIPATION_ID_FOR_RECORDING",
+                    f"Invalid participation_id format: {mapped_participation_id}",
+                    source_entity_ref or "unknown"
+                )
+                return None
+            
+            # KROK 5: Utwórz nowy obiekt Recording z mapowanymi IDs
             from grisera import RecordingIn
             mapped_recording = RecordingIn(
                 participation_id=mapped_participation_id,
@@ -2551,6 +2684,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         
         return processed_count
 
+
     def _save_measure_with_mapping(self, grisera_object, dataset_id: str, import_id: str):
         """
         Zapisuje Measure z mapowaniem measure_name_id z source ID na MongoDB ID.
@@ -2631,3 +2765,86 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         except Exception as e:
             print(f"❌ Error finding MeasureName by source_id {source_id}: {e}")
             return ""
+
+    def _save_participant_state_with_participant_mapping(self, grisera_object, dataset_id: str, import_id: str):
+        """
+        Zapisuje ParticipantState z mapowaniem participant_id z source ID na MongoDB ID.
+        """
+        try:
+            print(f"💾 Saving ParticipantState with participant mapping...")
+            
+            # KROK 1: Pobierz source_entity_ref z additional_properties (to @id z JSON)
+            source_entity_ref = None
+            for prop in grisera_object.additional_properties:
+                if prop.key == "source_entity_ref":
+                    source_entity_ref = prop.value
+                    break
+            
+            if not source_entity_ref:
+                print("⚠️ No source_entity_ref found in ParticipantState")
+            else:
+                print(f"🔍 ParticipantState source ID: {source_entity_ref}")
+            
+            # KROK 2: Mapuj participant_id z source ID na MongoDB ID
+            mapped_participant_id = grisera_object.participant_id
+            if grisera_object.participant_id and str(grisera_object.participant_id).startswith(":"):
+                # To jest source ID, mapuj na MongoDB ID
+                participant_source_id = str(grisera_object.participant_id).replace(":", "")
+                participant_mongo_id = self._find_participant_by_source_id(participant_source_id, dataset_id)
+                
+                if participant_mongo_id:
+                    mapped_participant_id = participant_mongo_id
+                    print(f"✅ Mapped participant_id: {grisera_object.participant_id} -> {mapped_participant_id}")
+                else:
+                    print(f"❌ Could not find Participant in MongoDB for source ID: {participant_source_id}")
+                    self._log_import_error(
+                        import_id,
+                        dataset_id,
+                        "PARTICIPANT_NOT_FOUND_FOR_PARTICIPANT_STATE",
+                        f"Participant with source ID '{participant_source_id}' not found for ParticipantState",
+                        source_entity_ref or "unknown"
+                    )
+                    # Nie możemy zapisać ParticipantState bez participant_id
+                    return None
+            
+            if not mapped_participant_id:
+                print(f"❌ ParticipantState - Missing participant_id after mapping")
+                self._log_import_error(
+                    import_id,
+                    dataset_id,
+                    "PARTICIPANT_STATE_MISSING_PARTICIPANT_ID",
+                    f"ParticipantState missing participant_id after mapping",
+                    source_entity_ref or "unknown"
+                )
+                return None
+            
+            # KROK 3: Utwórz nowy ParticipantStateIn z poprawnym participant_id
+            from grisera import ParticipantStateIn
+            mapped_participant_state = ParticipantStateIn(
+                participant_id=mapped_participant_id,
+                personality_ids=grisera_object.personality_ids,
+                appearance_ids=grisera_object.appearance_ids,
+                age=grisera_object.age,
+                external_id=grisera_object.external_id,
+                additional_properties=grisera_object.additional_properties
+            )
+            
+            # KROK 4: Użyj participant_service do zapisania ParticipantState (embedded w Participant)
+            result = self.services.get_participant_service().add_participant_state(mapped_participant_state, dataset_id)
+            saved_participant_state_id = str(getattr(result, 'id', 'unknown'))
+            
+            print(f"✅ ParticipantState saved successfully with MongoDB ID: {saved_participant_state_id}")
+            print(f"🔗 Final participant_id mapping: {grisera_object.participant_id} -> {mapped_participant_id}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error saving ParticipantState with participant mapping: {e}")
+            self._log_import_error(
+                import_id,
+                dataset_id,
+                "PARTICIPANT_STATE_SAVE_ERROR",
+                f"Error saving ParticipantState with participant mapping: {str(e)}",
+                source_entity_ref or "unknown"
+            )
+            raise e

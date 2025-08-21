@@ -41,22 +41,3 @@ def normalize_property_name(prop_name: str) -> str:
         print(f"🔄 Property normalized: {prop_name} -> {result}")
     
     return result
-
-
-def generate_content_hash(file_content: str) -> str:
-    """
-    Generuje hash SHA256 z zawartości pliku do identyfikacji duplikatów
-    """
-    try:
-        # Dekoduj zawartość jeśli to base64
-        decoded_content = decode_file_content(file_content)
-        
-        # Wygeneruj hash SHA256
-        content_hash = hashlib.sha256(decoded_content.encode('utf-8')).hexdigest()
-        print(f"🔐 Generated SHA256 hash for content ({len(decoded_content)} chars)")
-        return content_hash
-        
-    except Exception as e:
-        print(f"❌ Error generating content hash: {e}")
-        # Fallback - użyj hash z oryginalnej zawartości
-        return hashlib.sha256(file_content.encode('utf-8')).hexdigest() 
