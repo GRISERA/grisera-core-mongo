@@ -18,17 +18,15 @@ class ChannelConverter(BaseEntityConverter[ChannelIn]):
             entity_id_str_for_fallback=external_id
         )
         
-        additional_properties = self._create_common_properties(json_entity)
-        
+        channel = ChannelIn(channel_name=channel_name)
+
+        additional_properties = self._set_common_properties(json_entity, channel)
+
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_MAIN_FIELD)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
-        
-        print(f"📝 Creating ChannelIn: channel_name='{channel_name}', external_id='{external_id}', properties={len(additional_properties)} (including common)")
-        return ChannelIn(
-            channel_name=channel_name,
-            external_id=external_id,
-            additional_properties=additional_properties
-        )
+        channel.additional_properties = additional_properties
+        print(f"📝 Creating ChannelIn: channel_name='{channel_name}', external_id='{channel.external_id}', import_job_id='{channel.import_job_id}', properties={len(additional_properties)} (including common)")
+        return channel
 
 

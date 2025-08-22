@@ -17,12 +17,15 @@ class ArrangementConverter(BaseEntityConverter[ArrangementIn]):
             entity_id_str_for_fallback=external_id
         )
         
-        additional_properties = self._create_common_properties(json_entity)
+        arrangement = ArrangementIn(arrangement_type=arrangement_type)
+
+        additional_properties = self._set_common_properties(json_entity, arrangement)
+
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_TYPE_FIELD)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
-        
-        print(f"📝 Creating ArrangementIn: arrangement_type='{arrangement_type}', external_id='{external_id}', properties={len(additional_properties)} (including common)")
-        return ArrangementIn(arrangement_type=arrangement_type, external_id=external_id)
+
+        print(f"📝 Creating ArrangementIn: arrangement_type='{arrangement_type}', external_id='{arrangement.external_id}', import_job_id='{arrangement.import_job_id}', properties={len(additional_properties)} (including common)")
+        return arrangement
 
 

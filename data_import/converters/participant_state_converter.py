@@ -25,14 +25,19 @@ class ParticipantStateConverter(BaseEntityConverter["ParticipantStateIn"]):
             except (ValueError, TypeError):
                 age = None
         
-        personality_ids = self._extract_related_ids(json_entity, self.JSON_KEY_CANDIDATES_FOR_PERSONALITY)
+        personality_ids = self._extract_related_ids(json_entity, self.JSON_KEY_CANDIDATES_FOR_PERSONALITY) ## EXTERNAL ID
         
-        # Appearance IDs - wyciągnij z hasApperance
-        appearance_ids = self._extract_related_ids(json_entity, self.JSON_KEY_CANDIDATES_FOR_APPEARANCE)
+        appearance_ids = self._extract_related_ids(json_entity, self.JSON_KEY_CANDIDATES_FOR_APPEARANCE) ## EXTERNAL ID
         
-        # Utwórz standardowe właściwości
-        additional_properties = self._create_common_properties(json_entity)
-        
+        participant_state = ParticipantStateIn(
+            participant_id=participant_id,
+            # personality_ids=personality_ids,
+            # appearance_ids=appearance_ids,
+            age=age
+        )
+
+        additional_properties = self._set_common_properties(json_entity, participant_state)
+
         # Wyklucz już przetworzone klucze
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_PARTICIPANT_ID)
@@ -40,19 +45,12 @@ class ParticipantStateConverter(BaseEntityConverter["ParticipantStateIn"]):
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_PERSONALITY)
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_APPEARANCE)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
-        
+
         clean_name_for_log = remove_prefix(external_id) if external_id else "Unknown"
-        
-        print(f"📝 Creating ParticipantStateIn: name='{clean_name_for_log}', participant_id='{participant_id}', age={age}, external_id='{external_id}', properties={len(additional_properties)} (including common)")
-        
-        return ParticipantStateIn(
-            participant_id=participant_id,
-            personality_ids=personality_ids,
-            appearance_ids=appearance_ids,
-            age=age,
-            external_id=external_id,
-            additional_properties=additional_properties
-        )
+
+        print(f"📝 Creating ParticipantStateIn: name='{clean_name_for_log}', participant_id='{participant_id}', age={age}, external_id='{participant_state.external_id}', import_job_id='{participant_state.import_job_id}', properties={len(additional_properties)} (including common)")
+
+        return participant_state
     
     def _extract_participant_id_from_json(self, json_entity: Dict[str, Any]) -> Optional[str]:
         """

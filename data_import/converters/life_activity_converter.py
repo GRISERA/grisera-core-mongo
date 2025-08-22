@@ -17,12 +17,15 @@ class LifeActivityConverter(BaseEntityConverter[LifeActivityIn]):
             entity_id_str_for_fallback=external_id
         )
         
-        additional_properties = self._create_common_properties(json_entity)
+        life_activity = LifeActivityIn(life_activity=life_activity_name)
+
+        additional_properties = self._set_common_properties(json_entity, life_activity)
+
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_MAIN_FIELD)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
-        
-        print(f"📝 Creating LifeActivityIn: life_activity_name='{life_activity_name}', external_id='{external_id}', properties={len(additional_properties)} (including common)")
-        return LifeActivityIn(life_activity=life_activity_name, external_id=external_id)
+
+        print(f"📝 Creating LifeActivityIn: life_activity_name='{life_activity_name}', external_id='{life_activity.external_id}', import_job_id='{life_activity.import_job_id}', properties={len(additional_properties)} (including common)")
+        return life_activity
 
 

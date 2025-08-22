@@ -263,7 +263,7 @@ class MongoApiService:
     def _field_is_id(field):
         if type(field) is not str:
             return False
-        return field == "id" or field[-3:] in ("_id", ".id")
+        return field == "id" or field[-3:] in ("_id", ".id") and field != "external_id"
 
     def _mongo_object_deep_iterate(self, mongo_object: dict, func):
         """

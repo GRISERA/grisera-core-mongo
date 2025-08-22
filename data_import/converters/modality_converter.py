@@ -17,12 +17,15 @@ class ModalityConverter(BaseEntityConverter[ModalityIn]):
             entity_id_str_for_fallback=external_id
         )
         
-        additional_properties = self._create_common_properties(json_entity)
+        modality = ModalityIn(modality=modality_name)
+
+        additional_properties = self._set_common_properties(json_entity, modality)
+
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_MAIN_FIELD)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
-        
-        print(f"📝 Creating ModalityIn: modality_name='{modality_name}', external_id='{external_id}', properties={len(additional_properties)} (including common)")
-        return ModalityIn(modality=modality_name, external_id=external_id)
+
+        print(f"📝 Creating ModalityIn: modality_name='{modality_name}', external_id='{modality.external_id}', import_job_id='{modality.import_job_id}', properties={len(additional_properties)} (including common)")
+        return modality
 
 

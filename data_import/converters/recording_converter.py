@@ -18,22 +18,22 @@ class RecordingConverter(BaseEntityConverter[RecordingIn]):
         # Wyciągnij RegisteredChannel ID z JSON - może być zagnieżdżony obiekt  
         registered_channel_id = self._extract_registered_channel_id_from_json(json_entity)
         
-        additional_properties = self._create_common_properties(json_entity)
-        
+        recording = RecordingIn(
+            participation_id=participation_id,
+            registered_channel_id=registered_channel_id
+        )
+
+        additional_properties = self._set_common_properties(json_entity, recording)
+
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_PARTICIPATION_ID)
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_REGISTERED_CHANNEL_ID)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
-        
+
         clean_name_for_log = remove_prefix(external_id) if external_id else "Unknown"
-        print(f"📝 Creating RecordingIn: name='{clean_name_for_log}', participation_id='{participation_id}', registered_channel_id='{registered_channel_id}', external_id='{external_id}', properties={len(additional_properties)} (including common)")
-        
-        return RecordingIn(
-            participation_id=participation_id,
-            registered_channel_id=registered_channel_id,
-            external_id=external_id,
-            additional_properties=additional_properties
-        )
+        print(f"📝 Creating RecordingIn: name='{clean_name_for_log}', participation_id='{participation_id}', registered_channel_id='{registered_channel_id}', external_id='{recording.external_id}', import_job_id='{recording.import_job_id}', properties={len(additional_properties)} (including common)")
+
+        return recording
     
     def _extract_participation_id_from_json(self, json_entity: Dict[str, Any]) -> Optional[str]:
         """

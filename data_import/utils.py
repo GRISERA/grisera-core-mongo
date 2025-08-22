@@ -23,7 +23,7 @@ def remove_prefix(entity_name: str) -> str:
     """Usuwa przedrostki typu co:, pc:, owl: z nazwy encji"""
     if ':' in entity_name:
         clean_name = entity_name.split(':', 1)[1]
-        print(f"🧹 Removed prefix: {entity_name} -> {clean_name}")
+        # print(f"🧹 Removed prefix: {entity_name} -> {clean_name}")
         return clean_name
     return entity_name
 

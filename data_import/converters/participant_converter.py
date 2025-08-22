@@ -27,9 +27,17 @@ class ParticipantConverter(BaseEntityConverter[ParticipantIn]):
         date_of_birth = self._get_optional_field_value(json_entity, self.JSON_KEY_CANDIDATES_FOR_DOB)
         disorder = self._get_optional_field_value(json_entity, self.JSON_KEY_CANDIDATES_FOR_DISORDER)
         
-        # Utwórz standardowe właściwości
-        additional_properties = self._create_common_properties(json_entity)
-        
+        # Utwórz obiekt ParticipantIn
+        participant = ParticipantIn(
+            name=name,
+            sex=sex,
+            date_of_birth=date_of_birth,
+            disorder=disorder
+        )
+
+        # Ustaw standardowe właściwości importu bezpośrednio na obiekcie
+        additional_properties = self._set_common_properties(json_entity, participant)
+
         # Wyklucz już przetworzone klucze z additional_properties
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_NAME)
@@ -37,18 +45,11 @@ class ParticipantConverter(BaseEntityConverter[ParticipantIn]):
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_DOB)
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_DISORDER)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
-        
+
         clean_name_for_log = remove_prefix(external_id) if external_id else "Unknown"
-        
+
         disorder_log_msg = f", disorder='{disorder}'" if disorder else ""
-        print(f"📝 Creating ParticipantIn: name='{name}', sex='{sex}', date_of_birth='{date_of_birth}'{disorder_log_msg}, external_id='{external_id}', properties={len(additional_properties)} (including common)")
-        return ParticipantIn(
-            name=name,
-            sex=sex,
-            date_of_birth=date_of_birth,
-            disorder=disorder,
-            external_id=external_id,
-            additional_properties=additional_properties
-        )
+        print(f"📝 Creating ParticipantIn: name='{name}', sex='{sex}', date_of_birth='{date_of_birth}'{disorder_log_msg}, external_id='{participant.external_id}', import_job_id='{participant.import_job_id}', properties={len(additional_properties)} (including common)")
+        return participant
 
 

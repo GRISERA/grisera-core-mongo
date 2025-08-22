@@ -44,22 +44,24 @@ class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
         scenario_activity_executions = self._extract_activity_execution_references(json_entity)
         scenario_data = self._extract_full_scenario_data(json_entity)
         
-        additional_properties = self._create_common_properties(json_entity)
-        
+        experiment = ExperimentIn(experiment_name=experiment_name)
+
+        additional_properties = self._set_common_properties(json_entity, experiment)
+
         # Dodaj creator, description i footnote jako PropertyIn (zgodnie z konwencją UI)
         additional_properties.append(PropertyIn(key="creator", value=creator))
         additional_properties.append(PropertyIn(key="description", value=description))
         if footnote:
             additional_properties.append(PropertyIn(key="footnote", value=footnote))
-        
+
         # Dodaj powiązania z ActivityExecution jako PropertyIn
         if scenario_activity_executions:
             additional_properties.append(PropertyIn(
-                key="has_scenario_activity_execution_ids", 
+                key="has_scenario_activity_execution_ids",
                 value=",".join(scenario_activity_executions)
             ))
             print(f"✅ Found {len(scenario_activity_executions)} ActivityExecution references in experiment")
-        
+
         # Dodaj pełne dane scenariuszy jako JSON dla nowej logiki
         if scenario_data:
             additional_properties.append(PropertyIn(
@@ -67,7 +69,7 @@ class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
                 value=json.dumps(scenario_data)
             ))
             print(f"✅ Saved {len(scenario_data)} full scenario data entries for new scenario logic")
-        
+
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_MAIN_FIELD)
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_CREATOR)
@@ -75,16 +77,12 @@ class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_FOOTNOTE)
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_SCENARIO)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
-        
-        external_id = self._get_external_id(json_entity)
+
         footnote_log = f", footnote='{footnote}'" if footnote else ""
         scenario_log = f", scenario_ae_count={len(scenario_activity_executions)}" if scenario_activity_executions else ""
-        print(f"📝 Creating ExperimentIn: experiment_name='{experiment_name}', creator='{creator}', description='{description}'{footnote_log}{scenario_log}, external_id='{external_id}', properties={len(additional_properties)} (including common)")
-        return ExperimentIn(
-            experiment_name=experiment_name,
-            external_id=external_id,
-            additional_properties=additional_properties
-        )
+        print(f"📝 Creating ExperimentIn: experiment_name='{experiment_name}', creator='{creator}', description='{description}'{footnote_log}{scenario_log}, external_id='{experiment.external_id}', import_job_id='{experiment.import_job_id}', properties={len(additional_properties)} (including common)")
+        experiment.additional_properties = additional_properties
+        return experiment
     
     def _extract_activity_execution_references(self, json_entity: Dict[str, Any]) -> List[str]:
         """

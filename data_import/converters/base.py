@@ -86,19 +86,42 @@ class BaseEntityConverter(ABC, Generic[GriseraInType]):
         
         return final_fallback_value
 
-    def _create_common_properties(self, json_entity: Dict[str, Any]) -> List[PropertyIn]:
+    def _set_common_properties(self, json_entity: Dict[str, Any], target_object: GriseraInType) -> List[PropertyIn]:
         """
-        Tworzy listę standardowych metadanych importu jako PropertyIn.
+        Ustawia standardowe metadane importu bezpośrednio na obiekcie docelowym
+        i zwraca listę dodatkowych właściwości (bez common properties).
         `source_entity_ref` przechowuje oryginalne @id (z potencjalnym prefiksem).
         """
         source_entity_id = "unknown_source_id"
         if "@id" in json_entity and json_entity["@id"] is not None and json_entity["@id"] != "":
             source_entity_id = str(json_entity["@id"])
-        
+
+        missing_attributes = []
+        model_class_name = target_object.__class__.__name__
+
+        if hasattr(target_object, 'external_id'):
+            target_object.external_id = source_entity_id
+        else:
+            missing_attributes.append('external_id')
+
+        if hasattr(target_object, 'import_job_id'):
+            target_object.import_job_id = str(self.import_id)
+        else:
+            missing_attributes.append('import_job_id')
+
+        if hasattr(target_object, 'import_timestamp'):
+            target_object.import_timestamp = datetime.utcnow()
+        else:
+            missing_attributes.append('import_timestamp')
+
+        # Jeśli brakuje jakichś atrybutów, zaloguj to
+        if missing_attributes:
+            print(f"⚠️ Model {model_class_name} nie dziedziczy po ImportableModel! Brakujące atrybuty: {', '.join(missing_attributes)}")
+            print(f"   Model nie będzie miał automatycznie ustawionych pól: external_id, import_job_id, import_timestamp")
+            print(f"   Sugeruję naprawić to dodając 'ImportableModel' do listy dziedziczenia w klasie {model_class_name}")
+
         properties = [
             PropertyIn(key="source_entity_ref", value=source_entity_id),
-            PropertyIn(key="import_job_id", value=str(self.import_id)),
-            PropertyIn(key="import_timestamp", value=datetime.utcnow().isoformat()),
         ]
         return properties
 
