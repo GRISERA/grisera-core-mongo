@@ -13,24 +13,24 @@ class ObservableInformationConverter(BaseEntityConverter[ObservableInformationIn
     def convert(self, json_entity: Dict[str, Any]) -> ObservableInformationIn:
         external_id = self._get_external_id(json_entity)
 
-        # Wyciągnij Modality ID z JSON - może być zagnieżdżony obiekt
         modality_id = self._extract_modality_id_from_json(json_entity)
         
-        # Wyciągnij LifeActivity ID z JSON - może być zagnieżdżony obiekt  
         life_activity_id = self._extract_life_activity_id_from_json(json_entity)
         
-        # Wyciągnij Recording ID z JSON - może być zagnieżdżony obiekt  
         recording_id = self._extract_recording_id_from_json(json_entity)
         
         clean_name_for_log = remove_prefix(external_id) if external_id else "Unknown"
         print(f"📝 Creating ObservableInformationIn: name='{clean_name_for_log}', modality_id='{modality_id}', life_activity_id='{life_activity_id}', recording_id='{recording_id}', external_id='{external_id}'")
         
-        return ObservableInformationIn(
+        observable_information = ObservableInformationIn(
             modality_id=modality_id,
             life_activity_id=life_activity_id,
             recording_id=recording_id,
-            external_id=external_id
+            # external_id=external_id
         )
+        additional_properties = self._set_common_properties(json_entity, observable_information)
+        return observable_information
+
     
     def _extract_modality_id_from_json(self, json_entity: Dict[str, Any]) -> Optional[str]:
         """

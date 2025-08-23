@@ -556,8 +556,10 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 print(f"✅ {entity_type} saved successfully with ID: {saved_id}")
                 return str(saved_id)
             elif entity_type == "TimeSeries":
-                print(f"✅ TimeSeries being saved with final data: {grisera_object.__dict__}")
-                result = self.services.get_time_series_service().save_time_series(grisera_object, dataset_id)
+                result = self._save_time_series_with_mapping(grisera_object, dataset_id, import_id)
+                saved_id = getattr(result, 'id', 'unknown')
+                print(f"✅ {entity_type} saved successfully with ID: {saved_id}")
+                return str(saved_id)
             elif entity_type == "Experiment":
                 print(f"✅ Experiment being saved with final data: {grisera_object.__dict__}")
                 result = self.services.get_experiment_service().save_experiment(grisera_object, dataset_id)
@@ -585,6 +587,11 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 result = self.services.get_registered_data_service().save_registered_data(grisera_object, dataset_id)
             elif entity_type == "RegisteredChannel":
                 result = self._save_registered_channel_with_mapping(grisera_object, dataset_id, import_id)
+                saved_id = getattr(result, 'id', 'unknown')
+                print(f"✅ {entity_type} saved successfully with ID: {saved_id}")
+                return str(saved_id)
+            elif entity_type == "ObservableInformation":
+                result = self._save_observable_information_with_mapping(grisera_object, dataset_id, import_id)
                 saved_id = getattr(result, 'id', 'unknown')
                 print(f"✅ {entity_type} saved successfully with ID: {saved_id}")
                 return str(saved_id)
@@ -3251,3 +3258,362 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 source_entity_ref or "unknown"
             )
             raise e
+
+    def _save_observable_information_with_mapping(self, grisera_object, dataset_id: str, import_id: str):
+        """
+        Zapisuje ObservableInformation z mapowaniem source IDs na MongoDB IDs.
+        ObservableInformation jest zapisywane jako część Recording (embedded document).
+        """
+        try:
+            source_entity_ref = grisera_object.external_id
+            print(f"🔍 ObservableInformation source ID: {source_entity_ref}")
+            
+            # 1. Mapuj modality_id (opcjonalne)
+            mapped_modality_id = None
+            if grisera_object.modality_id:
+                modality_source_id = str(grisera_object.modality_id)
+                print(f"🔍 Looking for Modality with source ID: {modality_source_id}")
+                modality_mongo_id = self._find_modality_by_source_id(modality_source_id, dataset_id)
+                
+                if modality_mongo_id:
+                    mapped_modality_id = modality_mongo_id
+                    print(f"🔗 Mapped modality_id: {grisera_object.modality_id} -> {mapped_modality_id}")
+                else:
+                    print(f"❌ Could not find Modality in MongoDB for source ID: {modality_source_id}")
+            
+            # 2. Mapuj life_activity_id (opcjonalne)
+            mapped_life_activity_id = None
+            if grisera_object.life_activity_id:
+                life_activity_source_id = str(grisera_object.life_activity_id)
+                print(f"🔍 Looking for LifeActivity with source ID: {life_activity_source_id}")
+                life_activity_mongo_id = self._find_life_activity_by_source_id(life_activity_source_id, dataset_id)
+                
+                if life_activity_mongo_id:
+                    mapped_life_activity_id = life_activity_mongo_id
+                    print(f"🔗 Mapped life_activity_id: {grisera_object.life_activity_id} -> {mapped_life_activity_id}")
+                else:
+                    print(f"❌ Could not find LifeActivity in MongoDB for source ID: {life_activity_source_id}")
+            
+            mapped_recording_id = None
+            if grisera_object.recording_id:
+                recording_source_id = str(grisera_object.recording_id)
+                print(f"🔍 Looking for Recording with source ID: {recording_source_id}")
+                
+                # Znajdź Recording po external_id
+                recording_mongo_id = self._find_recording_by_source_id(recording_source_id, dataset_id)
+                
+                if recording_mongo_id:
+                    mapped_recording_id = recording_mongo_id
+                    print(f"🔗 Mapped recording_id: {grisera_object.recording_id} -> {mapped_recording_id}")
+                else:
+                    print(f"❌ Could not find Recording in MongoDB for source ID: {recording_source_id}")
+                    self._log_import_error(
+                        import_id,
+                        dataset_id,
+                        "RECORDING_NOT_FOUND_FOR_OBSERVABLE_INFO",
+                        f"Recording with source ID '{recording_source_id}' not found for ObservableInformation",
+                        source_entity_ref or "unknown"
+                    )
+                    return None
+            
+            # Jeśli nie mamy recording_id, nie możemy zapisać
+            if not mapped_recording_id:
+                print(f"❌ Cannot save ObservableInformation without valid recording_id")
+                self._log_import_error(
+                    import_id,
+                    dataset_id,
+                    "RECORDING_ID_REQUIRED_FOR_OBSERVABLE_INFO",
+                    f"Cannot save ObservableInformation without valid recording_id",
+                    source_entity_ref or "unknown"
+                )
+                return None
+            
+            # 4. Utwórz nowy ObservableInformationIn z zmapowanymi ID
+            from grisera import ObservableInformationIn
+            mapped_observable_info = ObservableInformationIn(
+                modality_id=mapped_modality_id,
+                life_activity_id=mapped_life_activity_id,
+                recording_id=mapped_recording_id,
+                external_id=source_entity_ref,
+                import_job_id=import_id
+            )
+            
+            # 5. Zapisz przez ObservableInformationService
+            print(f"✅ ObservableInformation being saved with mapped data: {mapped_observable_info.__dict__}")
+            result = self.services.get_observable_information_service().save_observable_information(mapped_observable_info, dataset_id)
+            
+            # Sprawdź czy nie ma błędów
+            if hasattr(result, 'errors') and result.errors:
+                print(f"❌ Error saving ObservableInformation: {result.errors}")
+                self._log_import_error(
+                    import_id,
+                    dataset_id,
+                    "OBSERVABLE_INFO_SAVE_ERROR",
+                    f"Error saving ObservableInformation: {result.errors}",
+                    source_entity_ref or "unknown"
+                )
+                return None
+            
+            saved_observable_info_id = str(getattr(result, 'id', 'unknown'))
+            
+            print(f"🔗 Final ObservableInformation mappings:")
+            print(f"   modality_id: {grisera_object.modality_id} -> {mapped_modality_id}")
+            print(f"   life_activity_id: {grisera_object.life_activity_id} -> {mapped_life_activity_id}")
+            print(f"   recording_id: {grisera_object.recording_id} -> {mapped_recording_id}")
+            print(f"   ObservableInformation saved with ID: {saved_observable_info_id}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error saving ObservableInformation with mapping: {e}")
+            raise e
+
+    def _find_modality_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        """
+        Znajduje Modality w MongoDB po source_id i zwraca jego MongoDB ID
+        """
+        try:
+            query_filters = [
+                {"external_id": source_id},
+            ]
+            
+            for query_filter in query_filters:
+                modalities = self.mongo_api_service.get_documents(
+                    collection_name=Collections.MODALITY.value,
+                    dataset_id=dataset_id,
+                    query=query_filter
+                )
+                
+                if modalities and len(modalities) > 0:
+                    return str(modalities[0].get("id", ""))
+            
+            return ""
+            
+        except Exception as e:
+            print(f"❌ Error finding Modality by source_id {source_id}: {e}")
+            return ""
+
+    def _find_life_activity_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        """
+        Znajduje LifeActivity w MongoDB po source_id i zwraca jego MongoDB ID
+        """
+        try:
+            # Sprawdź zarówno dokładny external_id jak i bez prefiksu
+            query_filters = [
+                {"external_id": source_id},
+                {"external_id": f":{source_id}"}
+            ]
+            
+            for query_filter in query_filters:
+                life_activities = self.mongo_api_service.get_documents(
+                    collection_name=Collections.LIFE_ACTIVITY.value,
+                    dataset_id=dataset_id,
+                    query=query_filter
+                )
+                
+                if life_activities and len(life_activities) > 0:
+                    return str(life_activities[0].get("id", ""))
+            
+            return ""
+            
+        except Exception as e:
+            print(f"❌ Error finding LifeActivity by source_id {source_id}: {e}")
+            return ""
+
+    def _find_recording_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        """
+        Znajduje Recording w MongoDB po source_id i zwraca jego MongoDB ID
+        """
+        try:
+            # Sprawdź zarówno dokładny external_id jak i bez prefiksu
+            query_filters = [
+                {"external_id": source_id},
+            ]
+            
+            for query_filter in query_filters:
+                recordings = self.mongo_api_service.get_documents(
+                    collection_name=Collections.RECORDING.value,
+                    dataset_id=dataset_id,
+                    query=query_filter
+                )
+                
+                if recordings and len(recordings) > 0:
+                    found_id = str(recordings[0].get("id", ""))
+                    print(f"✅ Found Recording: {source_id} -> MongoDB ID: {found_id}")
+                    return found_id
+            
+            print(f"❌ Recording not found for source_id: {source_id}")
+            return ""
+            
+        except Exception as e:
+            print(f"❌ Error finding Recording by source_id {source_id}: {e}")
+            return ""
+
+    def _save_time_series_with_mapping(self, grisera_object, dataset_id: str, import_id: str):
+        """
+        Zapisuje TimeSeries z mapowaniem observable_information_id i measure_id na MongoDB IDs.
+        """
+        try:
+            source_entity_ref = grisera_object.external_id
+            print(f"🔍 TimeSeries source ID: {source_entity_ref}")
+            
+            # 1. Mapuj measure_id (opcjonalne)
+            mapped_measure_id = None
+            if grisera_object.measure_id:
+                measure_source_id = str(grisera_object.measure_id)
+                print(f"🔍 Looking for Measure with source ID: {measure_source_id}")
+                measure_mongo_id = self._find_measure_by_source_id(measure_source_id, dataset_id)
+                
+                if measure_mongo_id:
+                    mapped_measure_id = measure_mongo_id
+                    print(f"🔗 Mapped measure_id: {grisera_object.measure_id} -> {mapped_measure_id}")
+                else:
+                    print(f"❌ Could not find Measure in MongoDB for source ID: {measure_source_id}")
+            
+            # 2. Mapuj observable_information_id (najważniejsze)
+            mapped_observable_information_id = None
+            mapped_observable_information_ids = []
+            
+            if grisera_object.observable_information_id:
+                obs_info_source_id = str(grisera_object.observable_information_id)
+                print(f"🔍 Looking for ObservableInformation with source ID: {obs_info_source_id}")
+                
+                # Znajdź ObservableInformation po external_id w embedded liście
+                obs_info_mongo_id = self._find_observable_information_by_source_id(obs_info_source_id, dataset_id)
+                
+                if obs_info_mongo_id:
+                    mapped_observable_information_id = obs_info_mongo_id
+                    print(f"🔗 Mapped observable_information_id: {grisera_object.observable_information_id} -> {mapped_observable_information_id}")
+                else:
+                    print(f"❌ Could not find ObservableInformation in MongoDB for source ID: {obs_info_source_id}")
+                    self._log_import_error(
+                        import_id,
+                        dataset_id,
+                        "OBSERVABLE_INFO_NOT_FOUND_FOR_TIME_SERIES",
+                        f"ObservableInformation with source ID '{obs_info_source_id}' not found for TimeSeries",
+                        source_entity_ref or "unknown"
+                    )
+                    # TimeSeries może istnieć bez ObservableInformation
+            
+            # 3. Mapuj observable_information_ids (lista)
+            if grisera_object.observable_information_ids:
+                for obs_id in grisera_object.observable_information_ids:
+                    obs_source_id = str(obs_id)
+                    obs_mongo_id = self._find_observable_information_by_source_id(obs_source_id, dataset_id)
+                    if obs_mongo_id:
+                        mapped_observable_information_ids.append(obs_mongo_id)
+                        print(f"🔗 Mapped observable_information_ids: {obs_id} -> {obs_mongo_id}")
+            
+            # 4. Utwórz nowy TimeSeriesIn z zmapowanymi ID
+            from grisera import TimeSeriesIn
+            mapped_time_series = TimeSeriesIn(
+                measure_id=mapped_measure_id,
+                observable_information_id=mapped_observable_information_id,
+                observable_information_ids=mapped_observable_information_ids if mapped_observable_information_ids else None,
+                type=grisera_object.type,
+                source=grisera_object.source,
+                signal_values=grisera_object.signal_values,
+                external_id=source_entity_ref,
+                import_job_id=import_id,
+                additional_properties=grisera_object.additional_properties
+            )
+            
+            # 5. Zapisz przez TimeSeriesService
+            print(f"✅ TimeSeries being saved with mapped data: {mapped_time_series.__dict__}")
+            result = self.services.get_time_series_service().save_time_series(mapped_time_series, dataset_id)
+            
+            # Sprawdź czy nie ma błędów
+            if hasattr(result, 'errors') and result.errors:
+                print(f"❌ Error saving TimeSeries: {result.errors}")
+                self._log_import_error(
+                    import_id,
+                    dataset_id,
+                    "TIME_SERIES_SAVE_ERROR",
+                    f"Error saving TimeSeries: {result.errors}",
+                    source_entity_ref or "unknown"
+                )
+                return None
+            
+            saved_time_series_id = str(getattr(result, 'id', 'unknown'))
+            
+            print(f"🔗 Final TimeSeries mappings:")
+            print(f"   measure_id: {grisera_object.measure_id} -> {mapped_measure_id}")
+            print(f"   observable_information_id: {grisera_object.observable_information_id} -> {mapped_observable_information_id}")
+            print(f"   observable_information_ids: {grisera_object.observable_information_ids} -> {mapped_observable_information_ids}")
+            print(f"   TimeSeries saved with ID: {saved_time_series_id}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Error saving TimeSeries with mapping: {e}")
+            raise e
+
+    def _find_observable_information_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        """
+        Znajduje ObservableInformation w MongoDB po source_id.
+        Szuka w embedded liście observable_informations w Recording.
+        """
+        try:
+            print(f"🔍 Searching for ObservableInformation with external_id: {source_id}")
+            
+            # Zapytanie MongoDB - szukaj Recording które mają ObservableInformation z danym external_id
+            query_filter = {
+                "observable_informations": {
+                    "$elemMatch": {
+                        "external_id": source_id
+                    }
+                }
+            }
+            
+            recordings = self.mongo_api_service.get_documents(
+                collection_name=Collections.RECORDING.value,
+                dataset_id=dataset_id,
+                query=query_filter
+            )
+            
+            if recordings and len(recordings) > 0:
+                recording = recordings[0]
+                observable_informations = recording.get("observable_informations", [])
+                
+                # Znajdź konkretny ObservableInformation w liście
+                for obs_info in observable_informations:
+                    if obs_info.get("external_id") == source_id:
+                        found_id = str(obs_info.get("id", ""))
+                        print(f"✅ Found ObservableInformation: {source_id} -> MongoDB ID: {found_id}")
+                        return found_id
+            
+            print(f"❌ ObservableInformation not found for source_id: {source_id}")
+            return ""
+            
+        except Exception as e:
+            print(f"❌ Error finding ObservableInformation by source_id {source_id}: {e}")
+            return ""
+
+    def _find_measure_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        """
+        Znajduje Measure w MongoDB po source_id i zwraca jego MongoDB ID
+        """
+        try:
+            # Sprawdź zarówno dokładny external_id jak i bez prefiksu
+            query_filters = [
+                {"external_id": source_id}
+            ]
+            
+            for query_filter in query_filters:
+                measures = self.mongo_api_service.get_documents(
+                    collection_name=Collections.MEASURE.value,
+                    dataset_id=dataset_id,
+                    query=query_filter
+                )
+                
+                if measures and len(measures) > 0:
+                    found_id = str(measures[0].get("id", ""))
+                    print(f"✅ Found Measure: {source_id} -> MongoDB ID: {found_id}")
+                    return found_id
+            
+            print(f"❌ Measure not found for source_id: {source_id}")
+            return ""
+            
+        except Exception as e:
+            print(f"❌ Error finding Measure by source_id {source_id}: {e}")
+            return ""
