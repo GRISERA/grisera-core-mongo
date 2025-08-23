@@ -1,7 +1,7 @@
 from typing import Dict, Any, List
 from grisera import TimeSeriesIn
 from .base import BaseEntityConverter
-from data_import.utils import remove_prefix
+from data_operations.utils import remove_prefix
 
 
 class TimeSeriesConverter(BaseEntityConverter[TimeSeriesIn]):

@@ -1,7 +1,7 @@
 from typing import Dict, Any, Optional, List
 from grisera import ParticipantStateIn
 from .base import BaseEntityConverter
-from data_import.utils import remove_prefix
+from data_operations.utils import remove_prefix
 
 
 class ParticipantStateConverter(BaseEntityConverter["ParticipantStateIn"]):

@@ -1,7 +1,5 @@
 import base64
-import hashlib
 import re
-from typing import Any
 
 
 def decode_file_content(file_content: str) -> str:
@@ -23,7 +21,6 @@ def remove_prefix(entity_name: str) -> str:
     """Usuwa przedrostki typu co:, pc:, owl: z nazwy encji"""
     if ':' in entity_name:
         clean_name = entity_name.split(':', 1)[1]
-        # print(f"🧹 Removed prefix: {entity_name} -> {clean_name}")
         return clean_name
     return entity_name
 

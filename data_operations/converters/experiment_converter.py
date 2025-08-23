@@ -2,7 +2,7 @@ import json
 from typing import Dict, Any, List
 from grisera import ExperimentIn, PropertyIn
 from .base import BaseEntityConverter
-from data_import.utils import remove_prefix
+from data_operations.utils import remove_prefix
 
 
 class ExperimentConverter(BaseEntityConverter[ExperimentIn]):

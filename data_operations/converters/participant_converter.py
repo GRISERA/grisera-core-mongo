@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from grisera import ParticipantIn
 from .base import BaseEntityConverter
-from data_import.utils import remove_prefix
+from data_operations.utils import remove_prefix
 
 
 class ParticipantConverter(BaseEntityConverter[ParticipantIn]):

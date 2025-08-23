@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from grisera import ActivityIn, PropertyIn
 from .base import BaseEntityConverter
-from data_import.utils import remove_prefix
+from data_operations.utils import remove_prefix
 
 
 class ActivityConverter(BaseEntityConverter[ActivityIn]):

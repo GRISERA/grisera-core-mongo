@@ -1,10 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
 from typing import Optional, List
+from data_operations.file_operations_model import (
+    FileOperationIn,
+    FileOperationOut,
+    FileOperationError,
+    OperationStatus
+)
+from data_operations.data_import.data_import_service_mongodb import DataImportServiceMongoDB
 
-from data_import.data_import_model import DataImportIn, DataImportOut
-from data_import.data_import_service_mongodb import DataImportServiceMongoDB
-
-# Tworzenie routera - odpowiednik @RestController w Spring
 router = APIRouter(
     prefix="/api/v1/import",
     tags=["data-import"],
@@ -12,14 +15,13 @@ router = APIRouter(
 )
 
 
-# Dependency injection - podobne do @Autowired w Spring
 def get_import_service() -> DataImportServiceMongoDB:
     return DataImportServiceMongoDB()
 
 
-@router.post("/upload", response_model=DataImportOut)
+@router.post("/upload", response_model=FileOperationOut)
 async def upload_data(
-        import_request: DataImportIn,
+        import_request: FileOperationIn,
         import_service: DataImportServiceMongoDB = Depends(get_import_service)
 ):
     """
@@ -50,11 +52,11 @@ async def upload_data(
         )
 
 
-@router.post("/upload-file", response_model=DataImportOut)
+@router.post("/upload-file", response_model=FileOperationOut)
 async def upload_file(
         file: UploadFile = File(...),
         dataset_id: str = Form(...),
-        import_type: str = Form(...),
+        file_type: str = Form(...),
         description: Optional[str] = Form(None),
         experiment_id: Optional[str] = Form(None),
         import_service: DataImportServiceMongoDB = Depends(get_import_service)
@@ -70,10 +72,10 @@ async def upload_file(
         file_content_str = file_content.decode('utf-8')
 
         # Stwórz request object
-        import_request = DataImportIn(
+        import_request = FileOperationIn(
             file_name=file.filename,
             file_content=file_content_str,
-            import_type=import_type,
+            file_type=file_type,
             dataset_id=dataset_id,
             description=description,
             experiment_id=experiment_id
@@ -96,7 +98,7 @@ async def upload_file(
         )
 
 
-@router.get("/status/{import_id}", response_model=DataImportOut)
+@router.get("/status/{import_id}", response_model=FileOperationOut)
 async def get_import_status(
         import_id: str,
         dataset_id: str,
@@ -133,7 +135,7 @@ async def get_import_status(
         )
 
 
-@router.get("/dataset/{dataset_id}", response_model=List[DataImportOut])
+@router.get("/dataset/{dataset_id}", response_model=List[FileOperationOut])
 async def get_imports_by_dataset(
         dataset_id: str,
         import_service: DataImportServiceMongoDB = Depends(get_import_service)

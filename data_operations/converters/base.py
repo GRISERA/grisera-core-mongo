@@ -4,7 +4,7 @@ from typing import Dict, Any, List, TypeVar, Generic, Optional, Set
 from datetime import datetime
 
 from grisera import PropertyIn
-from data_import.utils import remove_prefix
+from data_operations.utils import remove_prefix
 
 # Type variable dla generycznego typu GRISERA In
 GriseraInType = TypeVar('GriseraInType')
