@@ -1,3 +1,4 @@
+import uuid
 from typing import Union, List, Dict, Any, Set
 import json
 from datetime import datetime
@@ -618,7 +619,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             Collections.RECORDING.value: "Recording",
             Collections.REGISTERED_DATA.value: "RegisteredData",
             Collections.REGISTERED_CHANNEL.value: "RegisteredChannel",
-            # Dodaj więcej mapowań według potrzeb
+            Collections.OBSERVABLE_INFORMATION.value: "ObservableInformation",
         }
         return collection_to_type.get(collection_name, "Unknown")
 
@@ -656,7 +657,6 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         """
         print(f"🔄 Updating import status for ID: {import_id}, dataset: {dataset_id}, status: {status.value}")
         try:
-            # 1. Odczytaj istniejący dokument, aby nie stracić pól
             existing_doc = self.mongo_api_service.get_document(
                 import_id,
                 Collections.IMPORT_JOBS.value,
@@ -664,7 +664,6 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             )
 
             if not isinstance(existing_doc, dict) or "id" not in existing_doc:
-                # Obsługa przypadku, gdy dokument nie istnieje lub jest w niepoprawnym formacie
                 print(f"❌ Cannot update status. Import job {import_id} not found or invalid.")
                 return
 
@@ -679,54 +678,19 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
             if error_messages:
                 fields_to_set["error_messages"] = error_messages
-            else:  # Upewnijmy się, że jeśli nie ma nowych błędów, a były, to je wyczyścimy, lub zostawimy - zależy od logiki.
-                # Bezpieczniejsze jest nie usuwać error_messages, jeśli nie są jawnie przekazane jako pusta lista.
-                # Jeśli error_messages jest None, nie dodajemy go do $set, zachowując poprzednią wartość.
+            else:
                 pass
 
-                # 3. Zaktualizuj istniejący dokument o nowe wartości
-            # Usuwamy '_id' z existing_doc przed scaleniem, jeśli jest, bo Pydantic go nie lubi w **data
-            # Ale my chcemy zachować wszystkie pola z existing_doc i nadpisać/dodać te z fields_to_set
-            # Mongo samo zarządza _id.
-
-            # Tworzymy nowy dokument poprzez scalenie starego z nowymi wartościami
-            # Pola z fields_to_set nadpiszą te w existing_doc
-            # Musimy usunąć 'id' z existing_doc jeśli jest, bo replace_one oczekuje _id, a nie id.
-            # Ale `update_document_with_dict` w `MongoApiService` robi `_update_mongo_input_id` które zamienia 'id' na '_id'.
-            # Więc `existing_doc` po `get_document` ma klucz 'id'.
-            # `update_data` dla `update_document_with_dict` powinno mieć 'id' (które zostanie zamienione na `_id`) albo nie mieć `id` i `_id`.
-
-            # Bezpieczniejsze jest stworzenie nowego słownika z wszystkimi potrzebnymi polami.
-            # `existing_doc` już ma 'id' jako klucz, a nie '_id'.
             updated_full_document = {**existing_doc, **fields_to_set}
-
-            # Usuwamy 'id' jeśli jest, bo MongoApiService.update_document_with_dict
-            # oczekuje, że ID będzie przekazane jako osobny argument 'id', a nie w słowniku 'new_document'.
-            # Jeśli 'id' jest w 'new_document', metoda _update_mongo_input_id może próbować je przekonwertować
-            # na '_id' i potencjalnie zduplikować lub spowodować konflikt.
-            # Najlepiej, aby 'new_document' nie zawierało ani 'id', ani '_id'.
-            # Jednak `update_document_with_dict` w `MongoApiService` bierze `new_document` i w nim zamienia `id` na `_id`
-            # a potem robi replace_one. Więc `new_document` POWINIEN zawierać wszystkie pola oprócz `_id`.
-            # `get_document` zwraca 'id' zamiast '_id'.
-
-            # Wersja z $set byłaby znacznie czystsza.
-            # Ponieważ musimy użyć replace_one, a `update_document_with_dict` zamienia `id` na `_id`:
-            # Upewnijmy się, że `updated_full_document` ma wszystkie pola z `DataImportOut` które są w `existing_doc`
-            # plus zaktualizowane pola.
-
-            # update_document_with_dict spodziewa się, że `new_document` to kompletny dokument bez `_id` (może mieć `id`).
-            # `existing_doc` ma już `id` i inne potrzebne pola.
-            # `fields_to_set` zawiera to co aktualizujemy.
 
             final_document_for_replace = {**existing_doc, **fields_to_set}  # `id` jest z `existing_doc`
 
-            # Logowanie dokumentu, który zostanie użyty do zastąpienia istniejącego
             print(f"📄 Preparing to replace document {import_id} with: {final_document_for_replace}")
 
             self.mongo_api_service.update_document_with_dict(
                 collection_name=Collections.IMPORT_JOBS.value,
-                id=import_id,  # To jest ID używane w filtrze replace_one
-                new_document=final_document_for_replace,  # Ten dokument zastąpi stary
+                id=import_id,
+                new_document=final_document_for_replace,
                 dataset_id=dataset_id
             )
             print("✅ Import status updated successfully")
@@ -1141,8 +1105,8 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                             "mongo_id": activity_mongo_id
                         })
                         print(f"✅ Added Activity {activity_source_id} (MongoDB ID: {activity_mongo_id})")
-                    else:
-                        print(f"⚠️ Activity {activity_source_id} already in list, skipping duplicate")
+                    # else:
+                        # print(f"⚠️ Activity {activity_source_id} already in list, skipping duplicate")
 
                 # KROK 2.4: Stwórz jeden scenariusz-szablon dla wszystkich Activities z eksperymentu
                 if experiment_activities:
@@ -1318,7 +1282,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             query_filter = {
                 "activity_executions": {
                     "$elemMatch": {
-                        "external_id": f":{source_id}"
+                        "external_id": f"{source_id}"
                     }
                 }
             }
@@ -1543,7 +1507,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
             # OPCJA 1: Szukaj po external_id (nowa metoda)
             query_filter = {
-                "external_id": f":{source_id}"
+                "external_id": source_id
             }
 
             participations = self.mongo_api_service.get_documents(
@@ -1587,11 +1551,11 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         NOWA WERSJA - external_id (dla Recording)
         """
         try:
-            print(f"🔍 Searching for RegisteredChannel with external_id: :{source_id}")
+            print(f"🔍 Searching for RegisteredChannel with external_id: {source_id}")
 
             # OPCJA 1: Szukaj po external_id (nowa metoda)
             query_filter = {
-                "external_id": f":{source_id}"
+                "external_id": source_id
             }
 
             registered_channels = self.mongo_api_service.get_documents(
@@ -1646,17 +1610,16 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
             # KROK 1: Mapuj activity_execution_id przez source_entity_ref
             mapped_activity_execution_id = grisera_object.activity_execution_id
-            if grisera_object.activity_execution_id and str(grisera_object.activity_execution_id).startswith(":"):
-                # To jest source ID, znajdź MongoDB ID ActivityExecution
-                ae_source_id = str(grisera_object.activity_execution_id).replace(":", "")
-                ae_mongo_id = self._find_activity_execution_by_source_id(ae_source_id, dataset_id)
 
-                if ae_mongo_id:
-                    mapped_activity_execution_id = ae_mongo_id
-                    print(f"✅ Mapped activity_execution_id: {grisera_object.activity_execution_id} -> {ae_mongo_id}")
-                else:
-                    print(f"❌ ActivityExecution not found for source ID: {ae_source_id}")
-                    return None
+            ae_source_id = str(grisera_object.activity_execution_id)
+            ae_mongo_id = self._find_activity_execution_by_source_id(ae_source_id, dataset_id)
+
+            if ae_mongo_id:
+                mapped_activity_execution_id = ae_mongo_id
+                print(f"✅ Mapped activity_execution_id: {grisera_object.activity_execution_id} -> {ae_mongo_id}")
+            else:
+                print(f"❌ ActivityExecution not found for source ID: {ae_source_id}")
+                return None
 
             # KROK 2: Mapuj participant_state_id przez source_entity_ref -> na ParticipantState ID!
             mapped_participant_state_id = grisera_object.participant_state_id
@@ -1679,15 +1642,12 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 return None
 
             # KROK 4: Utwórz nowy obiekt Participation z mapowanymi MongoDB IDs
-            from grisera import ParticipationIn
-            mapped_participation = ParticipationIn(
-                activity_execution_id=mapped_activity_execution_id,  # MongoDB ID ActivityExecution
-                participant_state_id=mapped_participant_state_id  # MongoDB ID ParticipantState
-            )
+            grisera_object.activity_execution_id = mapped_activity_execution_id
+            grisera_object.participant_state_id = mapped_participant_state_id
 
             # KROK 5: Zapisz Participation używając serwisu
-            print(f"✅ Participation being saved with final data: {mapped_participation.__dict__}")
-            result = self.services.get_participation_service().save_participation(mapped_participation, dataset_id)
+            print(f"✅ Participation being saved with final data: {grisera_object.__dict__}")
+            result = self.services.get_participation_service().save_participation(grisera_object, dataset_id)
             saved_participation_id = str(getattr(result, 'id', 'unknown'))
             print(f"✅ Participation saved with MongoDB ID: {saved_participation_id}")
 
@@ -1710,7 +1670,6 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             # KROK 1: Pobierz source_entity_ref z additional_properties (to @id z JSON)
             source_entity_ref = grisera_object.external_id
 
-
             if not source_entity_ref:
                 print("⚠️ No source_entity_ref found in ActivityExecution")
                 # Zapisz bez mapowania
@@ -1725,17 +1684,19 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 activity_source_id = grisera_object.activity_id.replace(":", "")
                 activity_mongo_id = self._find_activity_by_source_id(activity_source_id, dataset_id)
 
+
                 if activity_mongo_id:
-                    print(f"✅ Mapped activity_id: {grisera_object.activity_id} -> {activity_mongo_id}")
-                    from grisera import ActivityExecutionIn, PropertyIn
-                    new_ae = ActivityExecutionIn(
-                        activity_id=activity_mongo_id,
-                        arrangement_id=grisera_object.arrangement_id,
-                        additional_properties=grisera_object.additional_properties,
-                        external_id=grisera_object.external_id,
-                        import_job_id=grisera_object.import_job_id
-                    )
-                    grisera_object = new_ae
+                    grisera_object.activity_id = activity_mongo_id  # Zaktualizuj na MongoDB ID
+                    # print(f"✅ Mapped activity_id: {grisera_object.activity_id} -> {activity_mongo_id}")
+                    # from grisera import ActivityExecutionIn, PropertyIn
+                    # new_ae = ActivityExecutionIn(
+                    #     activity_id=activity_mongo_id,
+                    #     arrangement_id=grisera_object.arrangement_id,
+                    #     additional_properties=grisera_object.additional_properties,
+                    #     external_id=grisera_object.external_id,
+                    #     import_job_id=grisera_object.import_job_id
+                    # )
+                    # grisera_object = new_ae
                 else:
                     print(f"❌ Could not find Activity in MongoDB for source ID: {activity_source_id}")
                     self._log_import_error(
@@ -1821,8 +1782,6 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
                         # Zaktualizuj scenario
                         scenario_service = self.services.get_scenario_service()
-                        # Tutaj musiałbym użyć update_scenario, ale najprawdopodobniej nie ma takiej metody
-                        # Na razie tylko zalogujmy
                         print(f"🎭 Would update scenario {scenario_id} with ActivityExecution {ae_mongo_id}")
                         updated_count += 1
 
@@ -2392,48 +2351,55 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
             # KROK 2: Mapuj participation_id z source ID na MongoDB ID
             mapped_participation_id = grisera_object.participation_id
-            if grisera_object.participation_id and grisera_object.participation_id.startswith(":"):
-                # To jest source ID, mapuj na MongoDB ID
-                participation_source_id = grisera_object.participation_id.replace(":", "")
-                participation_mongo_id = self._find_participation_by_source_id(participation_source_id, dataset_id)
+            additional_properties = list(
+                grisera_object.additional_properties) if grisera_object.additional_properties else []
+            participation_source_id = grisera_object.participation_id
+            participation_mongo_id = self._find_participation_by_source_id(participation_source_id, dataset_id)
 
-                if participation_mongo_id:
-                    mapped_participation_id = participation_mongo_id
-                    print(f"✅ Mapped participation_id: {grisera_object.participation_id} -> {participation_mongo_id}")
-                else:
-                    print(f"❌ Could not find Participation in MongoDB for source ID: {participation_source_id}")
-                    self._log_import_error(
+            if participation_mongo_id:
+                mapped_participation_id = participation_mongo_id
+                print(f"✅ Mapped participation_id: {grisera_object.participation_id} -> {participation_mongo_id}")
+            else:
+                print(f"❌ Could not find Participation in MongoDB for source ID: {participation_source_id}")
+                additional_properties.append(PropertyIn(
+                    key="original_participation_id",
+                    value=grisera_object.participation_id
+                ))
+                self._log_import_error(
                         import_id,
                         dataset_id,
                         "PARTICIPATION_NOT_FOUND_FOR_RECORDING",
                         f"Participation with source ID '{participation_source_id}' not found for Recording",
                         source_entity_ref or "unknown"
                     )
-                    # Kontynuuj z oryginalnym ID - może zostanie utworzone później
+
+
+            print(f"🔍 Looking fot RegisteredChannel in MongoDB for source ID: {grisera_object.registered_channel_id}")
 
             # KROK 3: Mapuj registered_channel_id z source ID na MongoDB ID
-            mapped_registered_channel_id = grisera_object.registered_channel_id
-            if grisera_object.registered_channel_id and grisera_object.registered_channel_id.startswith(":"):
-                # To jest source ID, mapuj na MongoDB ID
-                registered_channel_source_id = grisera_object.registered_channel_id.replace(":", "")
-                registered_channel_mongo_id = self._find_registered_channel_by_source_id(registered_channel_source_id,
-                                                                                         dataset_id)
+            registered_channel_source_id = grisera_object.registered_channel_id
+            registered_channel_mongo_id = self._find_registered_channel_by_source_id(registered_channel_source_id,
+                                                                                        dataset_id)
 
-                if registered_channel_mongo_id:
-                    mapped_registered_channel_id = registered_channel_mongo_id
-                    print(
-                        f"✅ Mapped registered_channel_id: {grisera_object.registered_channel_id} -> {registered_channel_mongo_id}")
-                else:
-                    print(
-                        f"❌ Could not find RegisteredChannel in MongoDB for source ID: {registered_channel_source_id}")
-                    self._log_import_error(
+            if registered_channel_mongo_id:
+                mapped_registered_channel_id = registered_channel_mongo_id
+                print(f"✅ Mapped registered_channel_id: {grisera_object.registered_channel_id} -> {registered_channel_mongo_id}")
+            else:
+                print(f"❌ Could not find RegisteredChannel in MongoDB for source ID: {registered_channel_source_id}")
+                self._log_import_error(
                         import_id,
                         dataset_id,
                         "REGISTERED_CHANNEL_NOT_FOUND_FOR_RECORDING",
                         f"RegisteredChannel with source ID '{registered_channel_source_id}' not found for Recording",
                         source_entity_ref or "unknown"
-                    )
-                    # Kontynuuj z oryginalnym ID - może zostanie utworzone później
+                )
+                additional_properties.append(PropertyIn(
+                        key="original_registered_channel_id",
+                        value=grisera_object.registered_channel_id
+                    ))
+                mapped_registered_channel_id = None
+                print(
+                        f"➕ Added original registered_channel_id to additional_properties: {grisera_object.registered_channel_id}")
 
             # KROK 4: Sprawdź czy mapped_participation_id jest prawidłowym MongoDB ObjectId
             if mapped_participation_id and mapped_participation_id.startswith(":"):
@@ -2448,17 +2414,21 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 return None
 
             # KROK 5: Utwórz nowy obiekt Recording z mapowanymi IDs
-            from grisera import RecordingIn
-            mapped_recording = RecordingIn(
-                participation_id=mapped_participation_id,
-                registered_channel_id=mapped_registered_channel_id,
-                external_id=grisera_object.external_id,
-                additional_properties=grisera_object.additional_properties
-            )
+            # from grisera import RecordingIn
+            grisera_object.participation_id = mapped_participation_id
+            grisera_object.registered_channel_id = mapped_registered_channel_id
+            # mapped_recording = RecordingIn(
+            #     participation_id=mapped_participation_id,
+            #     registered_channel_id=mapped_registered_channel_id,
+            #     external_id=grisera_object.external_id,
+            #     additional_properties=additional_properties,
+            #     import_job_id=import_id,
+            #     import_timestamp=datetime.now(),
+            # )
 
             # KROK 5: Zapisz Recording używając serwisu
-            print(f"✅ Recording being saved with final data: {mapped_recording.__dict__}")
-            result = self.services.get_recording_service().save_recording(mapped_recording, dataset_id)
+            print(f"✅ Recording being saved with final data: {grisera_object.__dict__}")
+            result = self.services.get_recording_service().save_recording(grisera_object, dataset_id)
             saved_recording_id = str(getattr(result, 'id', 'unknown'))
             print(f"✅ Recording saved with ID: {saved_recording_id}")
 
@@ -2476,9 +2446,9 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             print(f"❌ Error saving Recording with mapping: {e}")
             raise e
 
-    # def _find_participation_by_source_id(self, source_id: str, dataset_id: str) -> str:
+    # def _find_registered_channel_by_source_id(self, source_id: str, dataset_id: str) -> str:
     #     """
-    #     Znajduje Participation w MongoDB po source_id i zwraca jego MongoDB ID
+    #     Znajduje RegisteredChannel w MongoDB po source_id i zwraca jego MongoDB ID
     #     """
     #     try:
     #         query_filter = {
@@ -2490,52 +2460,25 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
     #             }
     #         }
     #
-    #         participations = self.mongo_api_service.get_documents(
-    #             collection_name=Collections.PARTICIPATION.value,
+    #         registered_channels = self.mongo_api_service.get_documents(
+    #             collection_name=Collections.REGISTERED_CHANNEL.value,
     #             dataset_id=dataset_id,
     #             query=query_filter
     #         )
     #
-    #         if participations and len(participations) > 0:
-    #             return str(participations[0].get("id", ""))
+    #         if registered_channels and len(registered_channels) > 0:
+    #             return str(registered_channels[0].get("id", ""))
     #         return ""
     #
     #     except Exception as e:
-    #         print(f"❌ Error finding Participation by source_id {source_id}: {e}")
+    #         print(f"❌ Error finding RegisteredChannel by source_id {source_id}: {e}")
     #         return ""
-
-    def _find_registered_channel_by_source_id(self, source_id: str, dataset_id: str) -> str:
-        """
-        Znajduje RegisteredChannel w MongoDB po source_id i zwraca jego MongoDB ID
-        """
-        try:
-            query_filter = {
-                "additional_properties": {
-                    "$elemMatch": {
-                        "key": "source_entity_ref",
-                        "value": f":{source_id}"
-                    }
-                }
-            }
-
-            registered_channels = self.mongo_api_service.get_documents(
-                collection_name=Collections.REGISTERED_CHANNEL.value,
-                dataset_id=dataset_id,
-                query=query_filter
-            )
-
-            if registered_channels and len(registered_channels) > 0:
-                return str(registered_channels[0].get("id", ""))
-            return ""
-
-        except Exception as e:
-            print(f"❌ Error finding RegisteredChannel by source_id {source_id}: {e}")
-            return ""
 
     def _save_registered_channel_with_mapping(self, grisera_object, dataset_id: str, import_id: str):
         """
         Zapisuje RegisteredChannel z mapowaniem source IDs na MongoDB IDs dla registered_data_id i channel_id.
         """
+
         try:
             print(f"💾 Saving RegisteredChannel with ID mapping...")
 
@@ -2551,7 +2494,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             mapped_registered_data_id = grisera_object.registered_data_id
             if grisera_object.registered_data_id and grisera_object.registered_data_id.startswith(":"):
                 # To jest source ID, mapuj na MongoDB ID
-                registered_data_source_id = grisera_object.registered_data_id.replace(":", "")
+                registered_data_source_id = grisera_object.registered_data_id
                 registered_data_mongo_id = self._find_registered_data_by_source_id(registered_data_source_id,
                                                                                    dataset_id)
 
@@ -2568,41 +2511,31 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                         f"RegisteredData with source ID '{registered_data_source_id}' not found for RegisteredChannel",
                         source_entity_ref or "unknown"
                     )
-                    # Kontynuuj z oryginalnym ID - może zostanie utworzone później
 
-            # KROK 3: Mapuj channel_id z source ID na MongoDB ID
             mapped_channel_id = grisera_object.channel_id
-            if grisera_object.channel_id and grisera_object.channel_id.startswith(":"):
+            # if not self.is_uuid(grisera_object.channel_id):
                 # To jest source ID, mapuj na MongoDB ID
-                channel_source_id = grisera_object.channel_id.replace(":", "")
-                channel_mongo_id = self._find_channel_by_source_id(channel_source_id, dataset_id)
+            channel_source_id = grisera_object.channel_id
+            channel_mongo_id = self._find_channel_by_source_id(channel_source_id, dataset_id)
 
-                if channel_mongo_id:
-                    mapped_channel_id = channel_mongo_id
-                    print(f"✅ Mapped channel_id: {grisera_object.channel_id} -> {channel_mongo_id}")
-                else:
-                    print(f"❌ Could not find Channel in MongoDB for source ID: {channel_source_id}")
-                    self._log_import_error(
-                        import_id,
-                        dataset_id,
-                        "CHANNEL_NOT_FOUND_FOR_REGISTERED_CHANNEL",
-                        f"Channel with source ID '{channel_source_id}' not found for RegisteredChannel",
-                        source_entity_ref or "unknown"
-                    )
-                    # Kontynuuj z oryginalnym ID - może zostanie utworzone później
+            if channel_mongo_id:
+                mapped_channel_id = channel_mongo_id
+                print(f"✅ Mapped channel_id: {grisera_object.channel_id} -> {channel_mongo_id}")
+            else:
+                print(f"⚠️ Could not find Channel in MongoDB for source ID: {channel_source_id}")
+                mapped_channel_id = self._find_or_create_channel_by_type_string(
+                    channel_source_id,
+                    dataset_id,
+                    import_id
+                )
 
             # KROK 4: Utwórz nowy obiekt RegisteredChannel z mapowanymi IDs
-            from grisera import RegisteredChannelIn
-            mapped_registered_channel = RegisteredChannelIn(
-                registered_data_id=mapped_registered_data_id,
-                channel_id=mapped_channel_id,
-                additional_properties=grisera_object.additional_properties
-            )
+            grisera_object.registered_data_id = mapped_registered_data_id
+            grisera_object.channel_id = mapped_channel_id
 
-            # KROK 5: Zapisz RegisteredChannel używając serwisu
-            print(f"✅ RegisteredChannel being saved with final data: {mapped_registered_channel.__dict__}")
-            result = self.services.get_registered_channel_service().save_registered_channel(mapped_registered_channel,
-                                                                                            dataset_id)
+            print(f"✅ RegisteredChannel grisera_object: {grisera_object.__dict__}")
+            result = self.services.get_registered_channel_service().save_registered_channel(grisera_object, dataset_id)
+
             saved_registered_channel_id = str(getattr(result, 'id', 'unknown'))
             print(f"✅ RegisteredChannel saved with ID: {saved_registered_channel_id}")
 
@@ -2619,18 +2552,161 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             print(f"❌ Error saving RegisteredChannel with mapping: {e}")
             raise e
 
+    def _find_or_create_channel_by_type_string(self, channel_type_string: str, dataset_id: str,
+                                               import_id: str = None) -> str:
+        """
+        Dopasowuje typ kanału z JSON-a (np. 'co:channelAudio') do istniejącego kanału w MongoDB
+        i aktualizuje jego external_id. Jeśli nie znajdzie dopasowania, zwraca UUID kanału 'Unknown'.
+
+        Args:
+            channel_type_string (str): String z JSON-a (np. 'co:channelAudio')
+            dataset_id (str): ID datasetu
+            import_id (str): ID importu (opcjonalne, do logowania)
+
+        Returns:
+            str: UUID kanału z MongoDB
+        """
+        from grisera.channel.channel_model import Types
+
+        try:
+            # Wyciągnięcie nazwy typu z stringa (np. 'co:channelAudio' -> 'audio')
+            if ':' in channel_type_string:
+                type_part = channel_type_string.split(':')[-1]  # Bierzemy część po ':'
+                if type_part.startswith('channel'):
+                    type_name = type_part[7:].lower()  # Usuwamy 'channel' i robimy lowercase
+                else:
+                    type_name = type_part.lower()
+            else:
+                type_name = channel_type_string.lower()
+
+            print(f"🔍 Szukam kanału dla typu: '{type_name}' (z: '{channel_type_string}')")
+
+            # Sprawdzamy czy typ pasuje do któregoś z enum Types
+            matching_type = None
+            for channel_type in Types:
+                channel_type_value = channel_type.value[0]  # Pierwszy element tuple to nazwa typu
+                if type_name == channel_type_value.lower() or type_name in channel_type_value.lower():
+                    matching_type = channel_type_value
+                    break
+
+            if matching_type:
+                print(f"✅ Znaleziono dopasowanie: '{matching_type}'")
+
+                # Szukamy kanału w MongoDB po typie
+                query_filter = {"type": matching_type}
+                channels = self.mongo_api_service.get_documents(
+                    collection_name=Collections.CHANNEL.value,
+                    dataset_id=dataset_id,
+                    query=query_filter
+                )
+
+                if channels and len(channels) > 0:
+                    channel = channels[0]
+                    channel_id = str(channel.get("id", ""))
+
+                    # Aktualizujemy external_id
+                    if channel_id:
+                        print(f"🔄 Aktualizuję external_id dla kanału {channel_id}")
+
+                        # Użyjemy bezpośredniego zapytania MongoDB do częściowej aktualizacji
+                        from bson import ObjectId
+                        db = self.mongo_api_service.client[dataset_id]
+
+                        update_result = db[Collections.CHANNEL.value].update_one(
+                            {"_id": ObjectId(channel_id)},
+                            {"$set": {"external_id": channel_type_string}}
+                        )
+
+                        if update_result.modified_count > 0:
+                            print(f"✅ Zaktualizowano external_id dla kanału {matching_type}")
+                        else:
+                            print(f"⚠️ Nie udało się zaktualizować external_id dla kanału {matching_type}")
+
+                    return channel_id
+                else:
+                    print(f"❌ Nie znaleziono kanału typu '{matching_type}' w MongoDB")
+            else:
+                print(f"❌ Nie udało się dopasować typu '{type_name}' do żadnego z dostępnych typów kanałów")
+
+            # Jeśli nie znaleźliśmy dopasowania, szukamy/tworzymy kanał 'Unknown'
+            print("🔍 Szukam kanału 'Unknown'...")
+
+            unknown_query = {"type": "Unknown"}
+            unknown_channels = self.mongo_api_service.get_documents(
+                collection_name=Collections.CHANNEL.value,
+                dataset_id=dataset_id,
+                query=unknown_query
+            )
+
+            if unknown_channels and len(unknown_channels) > 0:
+                unknown_channel_id = str(unknown_channels[0].get("id", ""))
+                print(f"✅ Znaleziono istniejący kanał 'Unknown': {unknown_channel_id}")
+                return unknown_channel_id
+            else:
+                print("➕ Tworzę nowy kanał 'Unknown'...")
+                from grisera import ChannelIn
+
+                unknown_channel = ChannelIn(
+                    type="Unknown",
+                    description="Unknown channel type",
+                    import_job_id=import_id,
+                    import_timestamp=datetime.now(),
+                )
+
+                unknown_channel_id = self.services.get_channel_service().save_channel(unknown_channel, dataset_id)
+
+                if hasattr(unknown_channel_id, 'id'):
+                    unknown_channel_id = str(unknown_channel_id.id)
+                else:
+                    unknown_channel_id = str(unknown_channel_id)
+
+                print(f"✅ Utworzono nowy kanał 'Unknown': {unknown_channel_id}")
+                return unknown_channel_id
+
+        except Exception as e:
+            print(f"❌ Błąd podczas dopasowywania kanału dla '{channel_type_string}': {e}")
+
+            try:
+                fallback_channels = self.mongo_api_service.get_documents(
+                    collection_name=Collections.CHANNEL.value,
+                    dataset_id=dataset_id,
+                    query={}
+                )
+
+                if fallback_channels and len(fallback_channels) > 0:
+                    fallback_id = str(fallback_channels[0].get("id", ""))
+                    print(f"🔄 Używam fallback kanału: {fallback_id}")
+                    return fallback_id
+            except:
+                pass
+
+            # Ostatnia deska ratunku - zwróć pusty string
+            if import_id:
+                self._log_import_error(
+                    import_id,
+                    dataset_id,
+                    "CHANNEL_TYPE_MAPPING_FAILED",
+                    f"Nie udało się dopasować ani utworzyć kanału dla typu '{channel_type_string}': {e}",
+                    channel_type_string
+                )
+
+            return ""
+
+
+    def is_uuid(value: str) -> bool:
+        try:
+            uuid.UUID(value)
+            return True
+        except (ValueError, TypeError):
+            return False
+
     def _find_registered_data_by_source_id(self, source_id: str, dataset_id: str) -> str:
         """
         Znajduje RegisteredData w MongoDB po source_id i zwraca jego MongoDB ID
         """
         try:
             query_filter = {
-                "additional_properties": {
-                    "$elemMatch": {
-                        "key": "source_entity_ref",
-                        "value": f":{source_id}"
-                    }
-                }
+                "external_id": source_id
             }
 
             registered_data = self.mongo_api_service.get_documents(
@@ -2653,12 +2729,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         """
         try:
             query_filter = {
-                "additional_properties": {
-                    "$elemMatch": {
-                        "key": "source_entity_ref",
-                        "value": f":{source_id}"
-                    }
-                }
+                "external_id": source_id
             }
 
             channels = self.mongo_api_service.get_documents(
@@ -2824,38 +2895,47 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
             # KROK 1: Mapuj measure_name_id z source ID na MongoDB ID
             mapped_measure_name_id = grisera_object.measure_name_id
-            if grisera_object.measure_name_id and str(grisera_object.measure_name_id).startswith(":"):
-                # To jest source ID, mapuj na MongoDB ID
-                measure_name_source_id = str(grisera_object.measure_name_id).replace(":", "")
-                measure_name_mongo_id = self._find_measure_name_by_source_id(measure_name_source_id, dataset_id)
+            measure_name_source_id = str(grisera_object.measure_name_id)
+            measure_name_mongo_id = self._find_measure_name_by_source_id(measure_name_source_id, dataset_id)
+
+            if measure_name_mongo_id:
+                mapped_measure_name_id = measure_name_mongo_id
+                print(f"✅ Mapped measure_name_id: {grisera_object.measure_name_id} -> {measure_name_mongo_id}")
+            else:
+                # print(f"❌ Could not find MeasureName in MongoDB for source ID: {measure_name_source_id}")
+                # self._log_import_error(
+                #         import_id,
+                #         dataset_id,
+                #         "MEASURE_NAME_NOT_FOUND_FOR_MEASURE",
+                #         f"MeasureName with source ID '{measure_name_source_id}' not found for Measure",
+                #         str(grisera_object.measure_name_id)
+                #     )
+                # mapped_measure_name_id = None
+                measure_name_mongo_id = self._find_or_create_measure_name_by_name(
+                    measure_name_source_id, dataset_id, import_id
+                )
 
                 if measure_name_mongo_id:
                     mapped_measure_name_id = measure_name_mongo_id
-                    print(f"✅ Mapped measure_name_id: {grisera_object.measure_name_id} -> {measure_name_mongo_id}")
+                    print(f"✅ Found/created MeasureName by name: {measure_name_source_id} -> {measure_name_mongo_id}")
                 else:
-                    print(f"❌ Could not find MeasureName in MongoDB for source ID: {measure_name_source_id}")
+                    print(f"❌ Could not find or create MeasureName for: {measure_name_source_id}")
+                    print(f"❌ Cannot save Measure without valid measure_name_id")
                     self._log_import_error(
                         import_id,
                         dataset_id,
-                        "MEASURE_NAME_NOT_FOUND_FOR_MEASURE",
-                        f"MeasureName with source ID '{measure_name_source_id}' not found for Measure",
+                        "MEASURE_NAME_REQUIRED",
+                        f"Cannot save Measure without valid measure_name_id",
                         str(grisera_object.measure_name_id)
                     )
-                    # Kontynuuj z oryginalnym ID lub None - może zostanie utworzone później
-                    mapped_measure_name_id = None
+                    return None
 
-            # KROK 2: Utwórz nowy obiekt Measure z mapowanym measure_name_id
-            from grisera import MeasureIn
-            mapped_measure = MeasureIn(
-                datatype=grisera_object.datatype,
-                range=grisera_object.range,
-                unit=grisera_object.unit,
-                measure_name_id=mapped_measure_name_id
-            )
+            grisera_object.measure_name_id = mapped_measure_name_id
+
 
             # KROK 3: Zapisz Measure używając serwisu
-            print(f"✅ Measure being saved with final data: {mapped_measure.__dict__}")
-            result = self.services.get_measure_service().save_measure(mapped_measure, dataset_id)
+            print(f"✅ Measure being saved with final data: {grisera_object.__dict__}")
+            result = self.services.get_measure_service().save_measure(grisera_object, dataset_id)
             saved_measure_id = str(getattr(result, 'id', 'unknown'))
             print(f"✅ Measure saved with MongoDB ID: {saved_measure_id}")
 
@@ -2869,18 +2949,212 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             print(f"❌ Error saving Measure with mapping: {e}")
             raise e
 
+    def _find_or_create_measure_name_by_name(self, measure_name_source_id: str, dataset_id: str, import_id: str) -> str:
+        """
+        Znajduje MeasureName po nazwie (case-insensitive) lub tworzy nowy.
+
+        Args:
+            measure_name_source_id: ID z JSON (np. "fear", "http://...#fear")
+            dataset_id: ID datasetu
+            import_id: ID procesu importu
+
+        Returns:
+            MongoDB ID dla MeasureName lub None jeśli nie udało się utworzyć
+        """
+        try:
+            # Wyciągnij czystą nazwę z różnych formatów
+            clean_name = self._extract_clean_measure_name(measure_name_source_id)
+            print(
+                f"🔍 Searching for MeasureName with clean name: '{clean_name}' (from source: '{measure_name_source_id}')")
+
+            # 1. Najpierw sprawdź czy istnieje MeasureName z podobną nazwą (case-insensitive)
+            existing_measure_name_id = self._find_existing_measure_name_by_name(clean_name, dataset_id)
+            if existing_measure_name_id:
+                # Zaktualizuj external_id w istniejącym MeasureName
+                self._update_measure_name_external_id(existing_measure_name_id, measure_name_source_id, dataset_id)
+                return existing_measure_name_id
+
+            # 2. Jeśli nie znaleziono, utwórz nowy MeasureName
+            print(f"📝 Creating new MeasureName for: '{clean_name}'")
+            return self._create_new_measure_name_and_measure(clean_name, measure_name_source_id, dataset_id, import_id)
+
+        except Exception as e:
+            print(f"❌ Error in _find_or_create_measure_name_by_name: {e}")
+            return ""
+
+    def _extract_clean_measure_name(self, source_id: str) -> str:
+        """
+        Wyciąga czystą nazwę measure z różnych formatów source_id.
+
+        Przykłady:
+        - "fear" -> "fear"
+        - "http://www.semanticweb.org/GRISERA/contextualOntology/models/emotionalMeasures/ekman#fear" -> "fear"
+        - "ekman:fear" -> "fear"
+        """
+        if not source_id:
+            return "unknown"
+
+        # Usuń prefix ":"
+        clean_id = source_id.replace(":", "") if source_id.startswith(":") else source_id
+
+        # Jeśli to URL, wyciągnij część po ostatnim # lub /
+        if "http" in clean_id or "/" in clean_id:
+            if "#" in clean_id:
+                clean_id = clean_id.split("#")[-1]
+            elif "/" in clean_id:
+                clean_id = clean_id.split("/")[-1]
+
+        # Usuń namespace prefixes (np. "ekman:fear" -> "fear")
+        if ":" in clean_id:
+            clean_id = clean_id.split(":")[-1]
+
+        return clean_id.strip().lower()
+
+    def _find_existing_measure_name_by_name(self, clean_name: str, dataset_id: str) -> str:
+        """
+        Znajduje istniejący MeasureName po nazwie (case-insensitive, zawieranie).
+        """
+        try:
+            # Sprawdź czy nazwa jest zawarta w istniejących measure_names
+            query_filter = {
+                "name": {"$regex": f".*{clean_name}.*", "$options": "i"}
+            }
+
+            measure_names = self.mongo_api_service.get_documents(
+                collection_name=Collections.MEASURE_NAME.value,
+                dataset_id=dataset_id,
+                query=query_filter
+            )
+
+            if measure_names and len(measure_names) > 0:
+                # Preferuj dokładne dopasowanie
+                for mn in measure_names:
+                    if mn.get("name", "").lower() == clean_name:
+                        print(f"✅ Found exact match for '{clean_name}': {mn.get('name')} (ID: {mn.get('id')})")
+                        return str(mn.get("id", ""))
+
+                # Jeśli nie ma dokładnego, weź pierwszy częściowy
+                first_match = measure_names[0]
+                print(
+                    f"✅ Found partial match for '{clean_name}': {first_match.get('name')} (ID: {first_match.get('id')})")
+                return str(first_match.get("id", ""))
+
+            return ""
+
+        except Exception as e:
+            print(f"❌ Error finding existing MeasureName by name: {e}")
+            return ""
+
+    def _update_measure_name_external_id(self, measure_name_id: str, external_id: str, dataset_id: str):
+        """
+        Aktualizuje external_id w istniejącym MeasureName jeśli jest pusty.
+        """
+        try:
+            measure_name_doc = self.mongo_api_service.get_document(
+                measure_name_id,
+                Collections.MEASURE_NAME.value,
+                dataset_id
+            )
+
+            if measure_name_doc and not measure_name_doc.get("external_id"):
+                measure_name_doc["external_id"] = f":{external_id}"
+
+                self.mongo_api_service.update_document_with_dict(
+                    collection_name=Collections.MEASURE_NAME.value,
+                    id=measure_name_id,
+                    new_document=measure_name_doc,
+                    dataset_id=dataset_id
+                )
+                print(f"🔗 Updated MeasureName {measure_name_id} with external_id: :{external_id}")
+
+        except Exception as e:
+            print(f"❌ Error updating MeasureName external_id: {e}")
+
+    def _create_new_measure_name_and_measure(self, clean_name: str, source_id: str, dataset_id: str,
+                                             import_id: str) -> str:
+        """
+        Tworzy nowy MeasureName i odpowiadający mu domyślny Measure.
+
+        Returns:
+            MongoDB ID nowego MeasureName
+        """
+        try:
+            # 1. Utwórz MeasureName
+            from grisera import MeasureNameIn, PropertyIn
+
+            measure_name_in = MeasureNameIn(
+                name=clean_name.title(),  # Kapitalizuj pierwszą literę
+                type="User defined",
+                external_id=f":{source_id}",
+                import_job_id=import_id,
+                additional_properties=[
+                    PropertyIn(key="auto_created", value="true"),
+                    PropertyIn(key="source_id", value=source_id),
+                    PropertyIn(key="import_job_id", value=import_id)
+                ]
+            )
+
+            measure_name_service = self.services.get_measure_name_service()
+            measure_name_result = measure_name_service.save_measure_name(measure_name_in, dataset_id)
+
+            if hasattr(measure_name_result, 'errors') and measure_name_result.errors:
+                print(f"❌ Error creating MeasureName: {measure_name_result.errors}")
+                return ""
+
+            measure_name_id = str(measure_name_result.id)
+            print(f"✅ Created new MeasureName: '{clean_name}' with ID: {measure_name_id}")
+
+            # 2. Utwórz domyślny Measure dla tego MeasureName
+            self._create_default_measure_for_measure_name(measure_name_id, source_id, dataset_id, import_id)
+
+            return measure_name_id
+
+        except Exception as e:
+            print(f"❌ Error creating new MeasureName and Measure: {e}")
+            return ""
+
+    def _create_default_measure_for_measure_name(self, measure_name_id: str, source_id: str, dataset_id: str,
+                                                 import_id: str):
+        """
+        Tworzy domyślny Measure dla nowo utworzonego MeasureName.
+        """
+        try:
+            from grisera import MeasureIn, PropertyIn
+
+            default_measure_in = MeasureIn(
+                datatype="float",
+                range="0-1",
+                unit="normalized",
+                measure_name_id=measure_name_id,
+                external_id=source_id,
+                import_job_id=import_id,
+                additional_properties=[
+                    PropertyIn(key="auto_created", value="true"),
+                    PropertyIn(key="measure_name_id", value=measure_name_id),
+                    PropertyIn(key="import_job_id", value=import_id)
+                ]
+            )
+
+            measure_service = self.services.get_measure_service()
+            measure_result = measure_service.save_measure(default_measure_in, dataset_id)
+
+            if hasattr(measure_result, 'errors') and measure_result.errors:
+                print(f"❌ Error creating default Measure: {measure_result.errors}")
+            else:
+                measure_id = str(measure_result.id)
+                print(f"✅ Created default Measure with ID: {measure_id} for MeasureName: {measure_name_id}")
+
+        except Exception as e:
+            print(f"❌ Error creating default Measure: {e}")
+
+
     def _find_measure_name_by_source_id(self, source_id: str, dataset_id: str) -> str:
         """
         Znajduje MeasureName w MongoDB po source_id i zwraca jego MongoDB ID
         """
         try:
             query_filter = {
-                "additional_properties": {
-                    "$elemMatch": {
-                        "key": "source_entity_ref",
-                        "value": f":{source_id}"
-                    }
-                }
+                "external_id": source_id,
             }
 
             measure_names = self.mongo_api_service.get_documents(
@@ -2906,7 +3180,6 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
             # KROK 1: Pobierz source_entity_ref z additional_properties (to @id z JSON)
             source_entity_ref = grisera_object.external_id
-
 
             if not source_entity_ref:
                 print("⚠️ No source_entity_ref found in ParticipantState")

@@ -37,7 +37,7 @@ class RegisteredDataConverter(BaseEntityConverter[RegisteredDataIn]):
 
         clean_name_for_log = remove_prefix(external_id) if external_id else "Unknown"
         print(f"📝 Creating RegisteredDataIn: name='{clean_name_for_log}', source='{source}', external_id='{registered_data.external_id}', import_job_id='{registered_data.import_job_id}', properties={len(additional_properties)} (including common)")
-
+        registered_data.additional_properties = additional_properties
         return registered_data
 
 

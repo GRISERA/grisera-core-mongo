@@ -52,7 +52,6 @@ class RegisteredChannelConverter(BaseEntityConverter[RegisteredChannelIn]):
                     channel_source_id = self._extract_nested_entity_id(entity_value)
                     if channel_source_id:
                         print(f"✅ Found Channel source ID from {entity_key_with_prefix}: {channel_source_id}")
-                        # Zapisujemy source ID - mapowanie na MongoDB ID zostanie zrobione później
                         return channel_source_id
         
         print("⚠️ No Channel reference found in RegisteredChannel")
