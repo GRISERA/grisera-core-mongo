@@ -241,7 +241,12 @@ class MongoApiService:
 
         def fix_input_id(field, value):
             if self._field_is_id(field) and value is not None:
-                return ObjectId(value)
+                try:
+                    return ObjectId(value)
+                except Exception as e:
+                    # Jeśli value jest UUID (nie ObjectId), pozostaw jako string
+                    print(f"⚠️ Cannot convert '{value}' to ObjectId (field: {field}): {e}. Keeping as string.")
+                    return value
             return value
 
         self._mongo_object_deep_iterate(mongo_query, fix_input_id)

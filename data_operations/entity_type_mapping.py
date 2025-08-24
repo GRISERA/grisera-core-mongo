@@ -37,6 +37,11 @@ class EntityTypeMapping(Enum):
     OBSERVABLE_INFORMATION = ("ObservableInformation", Collections.OBSERVABLE_INFORMATION.value, 18, False)  # "observable_informations"
     TIME_SERIES = ("TimeSeries", Collections.TIME_SERIES.value, 19, False)  # "timeSeries" (camelCase!)
 
+    # Typy OWL Ontology - ignorowane podczas importu (nie są encjami GRISERA)
+    OWL_ONTOLOGY = ("owl:Ontology", None, 0, False)  # Metadane ontologii - ignorowane
+    PC_PROPERTY = ("pc:Property", None, 0, False)  # Właściwości - ignorowane
+    OWL_NAMED_INDIVIDUAL = ("owl:NamedIndividual", None, 0, False)  # Instancje - ignorowane
+
     def __init__(self, json_name: str, collection_name: str, import_order: int, is_basic_type: bool):
         self.json_name = json_name
         self.collection_name = collection_name
@@ -68,4 +73,27 @@ class EntityTypeMapping(Enum):
         Returns:
             set: Zbiór nazw podstawowych typów encji
         """
-        return {entity.json_name for entity in cls if entity.is_basic_type} 
+        return {entity.json_name for entity in cls if entity.is_basic_type}
+
+    @classmethod
+    def get_ignored_types(cls) -> set:
+        """
+        Zwraca typy encji, które są ignorowane podczas importu (np. typy OWL Ontology).
+        
+        Returns:
+            set: Zbiór nazw ignorowanych typów encji
+        """
+        return {entity.json_name for entity in cls if entity.collection_name is None}
+
+    @classmethod
+    def is_ignored_type(cls, entity_type: str) -> bool:
+        """
+        Sprawdza czy dany typ encji jest ignorowany podczas importu.
+        
+        Args:
+            entity_type: Nazwa typu encji
+            
+        Returns:
+            bool: True jeśli typ jest ignorowany
+        """
+        return entity_type in cls.get_ignored_types() 

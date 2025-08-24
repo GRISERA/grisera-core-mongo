@@ -1,7 +1,8 @@
 from typing import Dict, Any, Optional
 from grisera import AppearanceOcclusionIn
-from .base import BaseEntityConverter
-from data_import.utils import remove_prefix
+from .base import BaseEntityConverter, DEBUG
+from data_operations.utils import remove_prefix
+from mongo_service.collection_mapping import Collections
 
 
 class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
@@ -23,7 +24,8 @@ class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
         glasses = self._extract_glasses_from_json(json_entity)
         
         clean_name_for_log = remove_prefix(external_id) if external_id else "Unknown"
-        print(f"📝 Creating AppearanceOcclusionIn: name='{clean_name_for_log}', beard='{beard}', moustache='{moustache}', glasses='{glasses}', external_id='{external_id}'")
+        if DEBUG:
+            print(f"📝 Creating AppearanceOcclusionIn: name='{clean_name_for_log}', beard='{beard}', moustache='{moustache}', glasses='{glasses}', external_id='{external_id}'")
         
         return AppearanceOcclusionIn(
             beard=beard,
@@ -39,7 +41,8 @@ class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
         # Najpierw sprawdź proste przypadki
         simple_beard = self._get_optional_field_value(json_entity, self.JSON_KEY_CANDIDATES_FOR_BEARD)
         if simple_beard:
-            print(f"✅ Found simple beard: {simple_beard}")
+            if DEBUG:
+                print(f"✅ Found simple beard: {simple_beard}")
             return self._map_beard_value(simple_beard)
         
         # Następnie sprawdź zagnieżdżone obiekty
@@ -48,10 +51,12 @@ class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
                 if remove_prefix(entity_key_with_prefix) == clean_candidate_key:
                     beard_value = self._extract_nested_entity_id(entity_value)
                     if beard_value:
-                        print(f"✅ Found beard from {entity_key_with_prefix}: {beard_value}")
+                        if DEBUG:
+                            print(f"✅ Found beard from {entity_key_with_prefix}: {beard_value}")
                         return self._map_beard_value(beard_value)
         
-        print("⚠️ No beard found in Appearance, using default: 'no'")
+        if DEBUG:
+            print("⚠️ No beard found in Appearance, using default: 'no'")
         return "no"
     
     def _extract_moustache_from_json(self, json_entity: Dict[str, Any]) -> str:
@@ -61,7 +66,8 @@ class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
         # Najpierw sprawdź proste przypadki
         simple_moustache = self._get_optional_field_value(json_entity, self.JSON_KEY_CANDIDATES_FOR_MOUSTACHE)
         if simple_moustache:
-            print(f"✅ Found simple moustache: {simple_moustache}")
+            if DEBUG:
+                print(f"✅ Found simple moustache: {simple_moustache}")
             return self._map_moustache_value(simple_moustache)
         
         # Następnie sprawdź zagnieżdżone obiekty
@@ -70,10 +76,12 @@ class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
                 if remove_prefix(entity_key_with_prefix) == clean_candidate_key:
                     moustache_value = self._extract_nested_entity_id(entity_value)
                     if moustache_value:
-                        print(f"✅ Found moustache from {entity_key_with_prefix}: {moustache_value}")
+                        if DEBUG:
+                            print(f"✅ Found moustache from {entity_key_with_prefix}: {moustache_value}")
                         return self._map_moustache_value(moustache_value)
         
-        print("⚠️ No moustache found in Appearance, using default: 'no'")
+        if DEBUG:
+            print("⚠️ No moustache found in Appearance, using default: 'no'")
         return "no"
     
     def _extract_glasses_from_json(self, json_entity: Dict[str, Any]) -> bool:
@@ -82,10 +90,12 @@ class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
         """
         glasses_value = self._get_optional_field_value(json_entity, self.JSON_KEY_CANDIDATES_FOR_GLASSES)
         if glasses_value is not None:
-            print(f"✅ Found glasses: {glasses_value}")
+            if DEBUG:
+                print(f"✅ Found glasses: {glasses_value}")
             return str(glasses_value).lower() == "true"
         
-        print("⚠️ No glasses found in Appearance, using default: False")
+        if DEBUG:
+            print("⚠️ No glasses found in Appearance, using default: False")
         return False
     
     def _map_beard_value(self, beard_value: str) -> str:
@@ -100,7 +110,8 @@ class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
         elif "no" in beard_lower or "none" in beard_lower:
             return "None"
         else:
-            print(f"⚠️ Unknown beard value: {beard_value}, using default: 'None'")
+            if DEBUG:
+                print(f"⚠️ Unknown beard value: {beard_value}, using default: 'None'")
             return "None"
     
     def _map_moustache_value(self, moustache_value: str) -> str:
@@ -115,8 +126,14 @@ class AppearanceConverter(BaseEntityConverter[AppearanceOcclusionIn]):
         elif "no" in moustache_lower or "none" in moustache_lower:
             return "None"
         else:
-            print(f"⚠️ Unknown moustache value: {moustache_value}, using default: 'None'")
+            if DEBUG:
+                print(f"⚠️ Unknown moustache value: {moustache_value}, using default: 'None'")
             return "None"
 
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str) -> AppearanceOcclusionIn:
+        return self.convert(json_entity)
+
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        return self._find_by_source_id(source_id, dataset_id, Collections.APPEARANCE)
 
 

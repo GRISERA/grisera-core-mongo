@@ -4,10 +4,16 @@ from typing import Dict, Any, List, TypeVar, Generic, Optional, Set
 from datetime import datetime
 
 from grisera import PropertyIn
-from data_import.utils import remove_prefix
+from data_operations.utils import remove_prefix
+from mongo_service.mongo_api_service import MongoApiService
+from mongo_service.collection_mapping import Collections
+from services.mongo_services import MongoServiceFactory
+from data_operations.file_operations_service import FileOperationsStatusService
 
 # Type variable dla generycznego typu GRISERA In
 GriseraInType = TypeVar('GriseraInType')
+
+DEBUG = True
 
 
 class BaseEntityConverter(ABC, Generic[GriseraInType]):
@@ -19,6 +25,10 @@ class BaseEntityConverter(ABC, Generic[GriseraInType]):
 
     def __init__(self, import_id: str):
         self.import_id = import_id
+        self.mongo_api_service = MongoApiService()
+        self.services = MongoServiceFactory()
+        self.file_ops_service = FileOperationsStatusService()
+
 
     def _get_optional_field_value(
         self,
@@ -192,4 +202,55 @@ class BaseEntityConverter(ABC, Generic[GriseraInType]):
     def convert(self, json_entity: Dict[str, Any]) -> GriseraInType:
         pass
 
+    @abstractmethod
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str) -> GriseraInType:
+        pass
 
+
+    @abstractmethod
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        pass
+
+    def _find_by_source_id(self, source_id: str, dataset_id: str, collection: Collections) -> str:
+        """
+        Uniwersalna metoda do znajdowania dokumentów po source_id
+        """
+        try:
+            documents = self.mongo_api_service.get_documents(
+                collection_name=collection.value,
+                dataset_id=dataset_id,
+                query={"external_id": source_id}
+            )
+
+            if documents:
+                found_id = str(documents[0].get("id", ""))
+                if DEBUG:
+                    print(f"✅ Found {collection.value}: {source_id} -> MongoDB ID: {found_id}")
+                return found_id
+
+            if DEBUG:
+                print(f"❌ {collection.value} not found for source_id: {source_id}")
+            return ""
+
+        except Exception as e:
+            print(f"❌ Error finding {collection.value} by source_id {source_id}: {e}")
+            return ""
+
+    def _log_import_error(
+            self,
+            import_id: str,
+            dataset_id: str,
+            error_type: str,
+            error_message: str,
+            entity_str: str = None
+    ):
+        """
+        Loguje błąd importu do bazy danych używając FileOperationsStatusService
+        """
+        self.file_ops_service.log_error(
+            operation_uuid=import_id,
+            dataset_id=dataset_id,
+            error_type=error_type,
+            error_message=error_message,
+            entity_str=entity_str
+        )

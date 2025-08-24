@@ -1,9 +1,9 @@
 import json
 from typing import Dict, Any, List
 from grisera import ExperimentIn, PropertyIn
-from .base import BaseEntityConverter
-from data_import.utils import remove_prefix
-
+from .base import BaseEntityConverter, DEBUG
+from data_operations.utils import remove_prefix
+from mongo_service.collection_mapping import Collections
 
 class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
     JSON_KEY_CANDIDATES_FOR_MAIN_FIELD = ["experimentName", "hasName", "name"] # Czyste klucze
@@ -27,18 +27,21 @@ class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
         creator = self._get_optional_field_value(json_entity, self.JSON_KEY_CANDIDATES_FOR_CREATOR)
         if not creator:
             creator = "system"
-            print(f"ℹ️ No creator found for experiment '{experiment_name}', using default: '{creator}'")
+            if DEBUG:
+                print(f"ℹ️ No creator found for experiment '{experiment_name}', using default: '{creator}'")
         
         # Szukaj description w JSON, jeśli nie ma, użyj domyślnego
         description = self._get_optional_field_value(json_entity, self.JSON_KEY_CANDIDATES_FOR_DESCRIPTION)
         if not description:
             description = f"Added during import {self.import_id}"
-            print(f"ℹ️ No description found for experiment '{experiment_name}', using default: '{description}'")
+            if DEBUG:
+                print(f"ℹ️ No description found for experiment '{experiment_name}', using default: '{description}'")
         
         # Szukaj footnote w JSON (opcjonalne, może być puste)
         footnote = self._get_optional_field_value(json_entity, self.JSON_KEY_CANDIDATES_FOR_FOOTNOTE)
         if footnote:
-            print(f"✅ Found footnote for experiment '{experiment_name}': '{footnote}'")
+            if DEBUG:
+                print(f"✅ Found footnote for experiment '{experiment_name}': '{footnote}'")
         
         # Znajdź powiązania z ActivityExecution (co:hasScenario)
         scenario_activity_executions = self._extract_activity_execution_references(json_entity)
@@ -60,7 +63,8 @@ class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
                 key="has_scenario_activity_execution_ids",
                 value=",".join(scenario_activity_executions)
             ))
-            print(f"✅ Found {len(scenario_activity_executions)} ActivityExecution references in experiment")
+            if DEBUG:
+                print(f"✅ Found {len(scenario_activity_executions)} ActivityExecution references in experiment")
 
         # Dodaj pełne dane scenariuszy jako JSON dla nowej logiki
         if scenario_data:
@@ -68,7 +72,8 @@ class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
                 key="has_scenario_data",
                 value=json.dumps(scenario_data)
             ))
-            print(f"✅ Saved {len(scenario_data)} full scenario data entries for new scenario logic")
+            if DEBUG:
+                print(f"✅ Saved {len(scenario_data)} full scenario data entries for new scenario logic")
 
         processed_clean_keys = []
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_MAIN_FIELD)
@@ -80,8 +85,10 @@ class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
 
         footnote_log = f", footnote='{footnote}'" if footnote else ""
         scenario_log = f", scenario_ae_count={len(scenario_activity_executions)}" if scenario_activity_executions else ""
-        print(f"📝 Creating ExperimentIn: experiment_name='{experiment_name}', creator='{creator}', description='{description}'{footnote_log}{scenario_log}, external_id='{experiment.external_id}', import_job_id='{experiment.import_job_id}', properties={len(additional_properties)} (including common)")
         experiment.additional_properties = additional_properties
+        if DEBUG:
+            print(f"✅ Experiment being saved with final data: {experiment.__dict__}")
+
         return experiment
     
     def _extract_activity_execution_references(self, json_entity: Dict[str, Any]) -> List[str]:
@@ -138,4 +145,8 @@ class ExperimentConverter(BaseEntityConverter[ExperimentIn]):
         
         return scenario_data
 
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str):# -> ExperimentIn:
+        return self.services.get_experiment_service().save_experiment(self.convert(json_entity), dataset_id)
 
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        return self._find_by_source_id(source_id, dataset_id, Collections.ARRANGEMENT)
