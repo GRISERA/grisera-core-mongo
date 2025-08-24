@@ -7,12 +7,14 @@ import threading
 from data_import.utils import decode_file_content, remove_prefix
 from data_import.converters import ENTITY_CONVERTERS, BaseEntityConverter
 from data_import.entity_type_mapping import EntityTypeMapping
+from data_import.file_operations_service import FileOperationsStatusService
+from data_import.file_operations_model import FileOperationIn, OperationType
 
-from data_import.data_import_model import (
-    DataImportIn,
-    DataImportOut,
-    ImportStatus,
-    ImportProgressOut
+from data_import.file_operations_model import (
+    FileOperationIn,
+    FileOperationOut,
+    FileOperationError,
+    OperationStatus
 )
 from mongo_service.mongo_api_service import MongoApiService
 from mongo_service.service_mixins import GenericMongoServiceMixin
@@ -48,8 +50,9 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
     def __init__(self):
         super().__init__()
         self.mongo_api_service = MongoApiService()
-        self.model_out_class = DataImportOut
+        self.model_out_class = FileOperationOut
         self.services = MongoServiceFactory()
+        self.file_ops_service = FileOperationsStatusService()
 
         # self.property_mapper = OntologyPropertyMapper()
 
@@ -61,7 +64,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         print("   - ScenarioBuilderService for scenario construction")
         print("   - Utils module for helper functions")
 
-    def _background_import_processor(self, import_data: DataImportIn, import_id: str):
+    def _background_import_processor(self, import_data: FileOperationIn, import_id: str):
         """
         Processes the import data in a background thread.
         """
@@ -70,7 +73,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             self._update_import_status(
                 import_id,
                 import_data.dataset_id,
-                ImportStatus.PROCESSING,
+                OperationStatus.PROCESSING,
                 0,
                 0
             )
@@ -85,7 +88,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             error_count = self._get_error_count(import_id, import_data.dataset_id)
             print(f"⚠️ Background task: Found {error_count} errors during import ID: {import_id}")
 
-            final_status = ImportStatus.COMPLETED
+            final_status = OperationStatus.COMPLETED
             print(f"📋 Background task: Updating final status to: {final_status} for import ID: {import_id}")
             self._update_import_status(
                 import_id,
@@ -101,13 +104,13 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             self._update_import_status(
                 import_id,
                 import_data.dataset_id,
-                ImportStatus.FAILED,
+                OperationStatus.FAILED,
                 0,  # Reset counts on critical failure
                 0,  # Error count for this specific failure is captured in messages
                 [f"Background processing error: {str(e)}"]
             )
 
-    def start_import(self, import_data: DataImportIn) -> DataImportOut:
+    def start_import(self, import_data: FileOperationIn) -> FileOperationOut:
         """
         Rozpoczyna proces importu danych (asynchronicznie)
         Args:
@@ -120,29 +123,23 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
         import_id = None
         try:
-            print("📝 Creating import record in database...")
-            # Generuj hash zawartości pliku do identyfikacji duplikatów - użycie utils
+            print("📝 Creating import operation using FileOperationsStatusService...")
 
-            initial_status = ImportStatus.PENDING
-            import_record_data = {
-                "file_name": import_data.file_name,
-                "import_type": import_data.import_type,
-                "dataset_id": import_data.dataset_id,
-                "status": initial_status.value,
-                "description": import_data.description,
-                "created_at": datetime.utcnow().isoformat(),
-                "imported_records": 0,
-                "failed_records": 0,
-                "error_count": 0,
-                "experiment_id": import_data.experiment_id
-            }
-
-            import_id = self.mongo_api_service.create_document_from_dict(
-                import_record_data,
-                Collections.IMPORT_JOBS.value,
-                import_data.dataset_id
+            # Przygotuj dane operacji do FileOperationsStatusService
+            file_operation = FileOperationIn(
+                file_name=import_data.file_name,
+                operation_type=OperationType.IMPORT,
+                dataset_id=import_data.dataset_id,
+                description=import_data.description,
+                experiment_id=import_data.experiment_id,
+                additional_data={
+                    "import_type": import_data.import_type,
+                    "file_content": import_data.file_content if hasattr(import_data, 'file_content') else None
+                }
             )
-            print(f"✅ Import job created with ID: {import_id}, status: {initial_status.value}")
+
+            import_id = self.file_ops_service.create_operation(file_operation)
+            print(f"✅ Import operation created with UUID: {import_id}")
 
             print(f"🚀 Launching background import process for ID: {import_id}...")
             thread = threading.Thread(
@@ -153,104 +150,50 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             thread.start()
             print(f"🧵 Background thread started for import ID: {import_id}")
 
-            result = DataImportOut(
-                id=import_id,
-                file_name=import_data.file_name,
-                import_type=import_data.import_type,
-                dataset_id=import_data.dataset_id,
-                status=initial_status,  # Zwraca PENDING
-                description=import_data.description,
-                created_at=import_record_data["created_at"]
-                # imported_records i failed_records będą aktualizowane przez wątek w tle
-            )
             print(f"✅ Import initiated for ID: {import_id}. Returning PENDING status.")
-            return result
+            return self.file_ops_service.get_operation_status(import_id, import_data.dataset_id)
 
         except Exception as e:
             print(f"❌ Critical error during import initiation: {str(e)}")
             if import_id:  # Jeśli ID zostało utworzone, ale wątek nie ruszył
                 print(f"🔄 Updating status to FAILED for import ID: {import_id} due to initiation error.")
-                self._update_import_status(
+                self.file_ops_service.fail_operation(
                     import_id,
                     import_data.dataset_id,
-                    ImportStatus.FAILED,
-                    0,
-                    0,
                     [f"Initiation error: {str(e)}"]
                 )
 
-            result = DataImportOut(
-                id=import_id if import_id else "unknown_initiation_failure",
-                file_name=import_data.file_name,
-                import_type=import_data.import_type,
-                dataset_id=import_data.dataset_id,
-                status=ImportStatus.FAILED,
-                error_messages=[f"Initiation error: {str(e)}"]
-            )
-            print(f"💥 Returning failed import result: {result.id}")
-            return result
+            return self.file_ops_service.get_operation_status(import_id)
 
-    def get_import_status(self, import_id: str, dataset_id: str) -> DataImportOut:
+    def get_import_status(self, import_id: str, dataset_id: str) -> FileOperationOut:
         """
-        Pobiera status importu
+        Pobiera status importu używając FileOperation sStatusService
         """
         print(f"🔍 Getting import status for ID: {import_id}, dataset: {dataset_id}")
-        try:
-            import_doc = self.mongo_api_service.get_document(
-                import_id,
-                Collections.IMPORT_JOBS.value,
-                dataset_id
-            )
+        return self.file_ops_service.get_operation_status(import_id, dataset_id)
 
-            result = DataImportOut(**import_doc)
-            print(f"✅ Import status retrieved: {result.status}")
-            return result
 
-        except Exception as e:
-            print(f"❌ Failed to get import status for ID {import_id} (dataset: {dataset_id}): {str(e)}")
-            # Logowanie pełnego tracebacku dla błędu deserializacji
-            import traceback
-            print(traceback.format_exc())
-            return DataImportOut(
-                id=import_id,
-                file_name="unknown",
-                import_type="unknown",
-                dataset_id=dataset_id,
-                status=ImportStatus.FAILED,
-                error_messages=[f"Import not found: {str(e)}"]
-            )
-
-    def get_imports_by_dataset_id(self, dataset_id: str) -> List[DataImportOut]:
+    def get_imports_by_dataset_id(self, dataset_id: str) -> List[FileOperationOut]:
         """
         Pobiera wszystkie importy dla danego ID datasetu.
         """
         print(f"🔍 Fetching all imports for dataset ID: {dataset_id}")
         try:
-            query = {"dataset_id": dataset_id}
-            import_docs = self.mongo_api_service.get_documents(
-                collection_name=Collections.IMPORT_JOBS.value,
-                dataset_id=dataset_id,
-                query=query
-            )
+            file_operations = self.file_ops_service.get_operations_by_dataset_id(dataset_id)
 
-            if not import_docs:
-                print(f"ℹ️ No import jobs found for dataset ID: {dataset_id}")
+            if not file_operations:
+                print(f"ℹ️ No import operations found for dataset ID: {dataset_id}")
                 return []
 
-            # Konwertuj dokumenty na listę obiektów DataImportOut
-            imports_list = [DataImportOut(**doc) for doc in import_docs]
-            print(f"✅ Found {len(imports_list)} import jobs for dataset ID: {dataset_id}")
-            return imports_list
+            return file_operations
 
         except Exception as e:
             print(f"❌ Error fetching imports for dataset {dataset_id}: {str(e)}")
-            # Można tu rzucić wyjątek dalej lub zwrócić pustą listę w zależności od wymagań
-            # Na razie zwracam pustą listę w przypadku błędu, żeby nie crashować API
             import traceback
             print(traceback.format_exc())
             return []
 
-    def _process_import_data(self, import_data: DataImportIn, import_id: str) -> int:
+    def _process_import_data(self, import_data: FileOperationIn, import_id: str) -> int:
         """
         Przetwarza i importuje dane do MongoDB
         Returns: liczba zaimportowanych rekordów
@@ -267,7 +210,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             # i zaktualizuje status na FAILED.
             raise ValueError(error_msg)
 
-    def _import_json_data(self, import_data: DataImportIn, import_id: str) -> int:
+    def _import_json_data(self, import_data: FileOperationIn, import_id: str) -> int:
         """
         Importuje dane JSON zgodnie z instrukcją ontologiczną
         Zrefaktoryzowane aby korzystać z nowych komponentów
@@ -632,75 +575,49 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
     def _get_error_count(self, import_id: str, dataset_id: str) -> int:
         """
-        Pobiera liczbę błędów dla danego importu
+        Pobiera liczbę błędów dla danego importu używając FileOperationsStatusService
         """
-        print(f"🔍 Getting error count for import: {import_id}")
-        try:
-            query_filter = {"import_job_id": import_id}
-            error_documents = self.mongo_api_service.get_documents(
-                collection_name=Collections.IMPORT_ERRORS.value,
-                dataset_id=dataset_id,
-                query=query_filter
-            )
-            error_count = len(error_documents) if error_documents else 0
-            print(f"📊 Found {error_count} errors for import {import_id}")
-            return error_count
-
-        except Exception as e:
-            print(f"❌ Error getting error count: {e}")
-            return 0
+        return self.file_ops_service.get_error_count(import_id, dataset_id)
 
     def _update_import_status(
             self,
             import_id: str,
             dataset_id: str,
-            status: ImportStatus,
+            status: OperationStatus,
             imported_records: int,
             error_count: int,
             error_messages: List[str] = None
     ):
         """
-        Aktualizuje status importu w bazie danych
+        Aktualizuje status importu używając FileOperationsStatusService
         """
         print(f"🔄 Updating import status for ID: {import_id}, dataset: {dataset_id}, status: {status.value}")
         try:
-            existing_doc = self.mongo_api_service.get_document(
-                import_id,
-                Collections.IMPORT_JOBS.value,
-                dataset_id
-            )
-
-            if not isinstance(existing_doc, dict) or "id" not in existing_doc:
-                print(f"❌ Cannot update status. Import job {import_id} not found or invalid.")
+            # Mapuj OperationStatus na odpowiednie metody FileOperationsStatusService
+            if status == OperationStatus.PROCESSING:
+                success = self.file_ops_service.start_processing(import_id, dataset_id)
+            elif status == OperationStatus.COMPLETED:
+                success = self.file_ops_service.end_processing(
+                    import_id,
+                    dataset_id,
+                    processed_records=imported_records,
+                    error_count=error_count
+                )
+            elif status == OperationStatus.FAILED:
+                success = self.file_ops_service.fail_operation(
+                    import_id,
+                    dataset_id,
+                    error_messages=error_messages or []
+                )
+            else:
+                print(f"⚠️ Unsupported status update: {status}")
                 return
 
-            fields_to_set = {
-                "status": status.value,
-                "imported_records": imported_records,
-                "failed_records": error_count,
-                "updated_at": datetime.utcnow().isoformat()
-            }
-            if status in [ImportStatus.COMPLETED, ImportStatus.FAILED]:
-                fields_to_set["end_time"] = datetime.utcnow().isoformat()
-
-            if error_messages:
-                fields_to_set["error_messages"] = error_messages
+            if success:
+                print("✅ Import status updated successfully")
             else:
-                pass
+                print("❌ Failed to update import status")
 
-            updated_full_document = {**existing_doc, **fields_to_set}
-
-            final_document_for_replace = {**existing_doc, **fields_to_set}  # `id` jest z `existing_doc`
-
-            print(f"📄 Preparing to replace document {import_id} with: {final_document_for_replace}")
-
-            self.mongo_api_service.update_document_with_dict(
-                collection_name=Collections.IMPORT_JOBS.value,
-                id=import_id,
-                new_document=final_document_for_replace,
-                dataset_id=dataset_id
-            )
-            print("✅ Import status updated successfully")
         except Exception as e:
             print(f"❌ Error updating import status: {str(e)}")
 
@@ -713,37 +630,25 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             entity_str: str = None
     ):
         """
-        Loguje błąd importu do bazy danych
+        Loguje błąd importu do bazy danych używając FileOperationsStatusService
         """
-        print(f"📝 Logging import error: {error_type} - {error_message}")
-        try:
-            error_data = {
-                "import_job_id": import_id,
-                "dataset_id": dataset_id,
-                "error_type": error_type,
-                "error_message": error_message,
-                "entity_str": entity_str,
-                "timestamp": datetime.utcnow().isoformat()
-            }
+        self.file_ops_service.log_error(
+            operation_uuid=import_id,
+            dataset_id=dataset_id,
+            error_type=error_type,
+            error_message=error_message,
+            entity_str=entity_str
+        )
 
-            self.mongo_api_service.create_document_from_dict(
-                error_data,
-                Collections.IMPORT_ERRORS.value,
-                dataset_id
-            )
-            print("✅ Import error logged successfully")
-        except Exception as e:
-            print(f"❌ Error logging import error: {str(e)}")
-
-    def _handle_experiment_creation(self, import_data: DataImportIn, json_data: Dict[str, Any], import_id: str) -> str:
+    def _handle_experiment_creation(self, import_data: FileOperationIn, json_data: Dict[str, Any], import_id: str) -> str:
         """
         Sprawdza czy potrzeba utworzyć eksperyment automatycznie.
-        
+
         Args:
             import_data: Dane importu
             json_data: Przesłane dane JSON
             import_id: ID procesu importu
-            
+
         Returns:
             ID eksperymentu (istniejący lub nowo utworzony) lub None
         """
@@ -836,12 +741,12 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
     def _find_and_import_experiment_from_json(self, json_data: Dict[str, Any], dataset_id: str, import_id: str) -> str:
         """
         Znajduje i importuje eksperyment z danych JSON jeśli istnieje.
-        
+
         Args:
             json_data: Dane JSON do przeszukania
             dataset_id: ID datasetu
             import_id: ID procesu importu
-            
+
         Returns:
             ID zaimportowanego eksperymentu lub None jeśli nie znaleziono
         """
@@ -944,13 +849,13 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
     ) -> bool:
         """
         Przetwarza zagnieżdżone encje które były w kolejce
-        
+
         Args:
             entity_data: Dane encji do przetworzenia
             dataset_id: ID datasetu
             import_id: ID importu
             processed_ids: Zbiór już przetworzonych ID
-            
+
         Returns:
             True jeśli encja została pomyślnie przetworzona, False w przeciwnym razie
         """
@@ -1027,10 +932,10 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             )
             return False
 
-    def _build_experiment_scenarios(self, import_data: DataImportIn, import_id: str) -> int:
+    def _build_experiment_scenarios(self, import_data: FileOperationIn, import_id: str) -> int:
         """
         Buduje scenariusze na podstawie zaimportowanych eksperymentów.
-        
+
         NOWA LOGIKA:
         1. Scenariusz (Scenario) = szablon dla Activity (już mamy)
         2. Scenario Execution = konkretne wykonanie scenariusza - grupa Activity Executions z tym samym scenarioExecutionName
@@ -1280,7 +1185,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
     def _find_activity_execution_by_source_id(self, source_id: str, dataset_id: str) -> str:
         """
         Znajduje ActivityExecution w MongoDB po source_id i zwraca jego MongoDB ID.
-        
+
         POPRAWKA: ActivityExecution są embedded w Activity documents, nie w osobnej kolekcji!
         """
         try:
@@ -1604,7 +1509,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         """
         Zapisuje Participation z mapowaniem source IDs na MongoDB IDs.
         PROSTE MAPOWANIE: source_entity_ref -> MongoDB ID
-        
+
         MAPOWANIE:
         - activity_execution_id: source_id -> MongoDB ID ActivityExecution (embedded w activities)
         - participant_state_id: source_id -> MongoDB ID ParticipantState (kolekcja participant_states)
@@ -1807,7 +1712,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                                     activity_executions: List[Dict[str, Any]], dataset_id: str, import_id: str) -> int:
         """
         Tworzy osobne Scenario Executions dla każdego ActivityExecution który pasuje do template scenario.
-        
+
         NOWA LOGIKA:
         1. Pobierz template scenario i sprawdź jakie activity_id ma
         2. Dla każdego ActivityExecution sprawdź czy jego activity_id pasuje do template scenario
@@ -1976,11 +1881,11 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
     def _find_imported_participants(self, import_id: str, dataset_id: str) -> List[Dict[str, Any]]:
         """
         Znajduje participantów zaimportowanych w tym import job.
-        
+
         Args:
             import_id: ID procesu importu
             dataset_id: ID datasetu
-            
+
         Returns:
             Lista słowników z danymi participantów (id, name, source_id)
         """
@@ -2036,12 +1941,12 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         """
         Dodaje participantów do eksperymentu przez aktualizację additional_properties.
         Wykorzystuje wzorzec z frontend UI (participant_id w additional_properties).
-        
+
         Args:
             experiment_id: MongoDB ID eksperymentu
             participants: Lista participantów (z mongo_id, name, source_id)
             dataset_id: ID datasetu
-            
+
         Returns:
             True jeśli operacja zakończona sukcesem, False w przeciwnym razie
         """
@@ -2119,12 +2024,12 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                                               dataset_id: str) -> int:
         """
         Przetwarza i dodaje participantów do eksperymentów zaimportowanych w tym import job.
-        
+
         Args:
             experiments: Lista słowników z danymi eksperymentów
             import_id: ID procesu importu
             dataset_id: ID datasetu
-            
+
         Returns:
             Liczba zaktualizowanych eksperymentów
         """
@@ -2175,17 +2080,17 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
     def _create_participations_direct_insert(self, import_id: str, dataset_id: str) -> int:
         """
         PROSTY DIRECT INSERT do kolekcji participations - bez skomplikowanej logiki konwerterów.
-        
+
         Algorytm:
         1. Pobierz wszystkich participantów i activity_executions z tego import job
         2. Dla każdego participanta stwórz participant_state (jeśli nie istnieje)
         3. Dla każdego participanta znajdź jego activity_execution przez source mapping
         4. Zrób prosty insert_one do kolekcji 'participations' z participant_state_id
-        
+
         Args:
             import_id: ID procesu importu
             dataset_id: ID datasetu
-            
+
         Returns:
             Liczba utworzonych participation rekordów
         """
@@ -2198,7 +2103,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 print("ℹ️ No participants found for participation creation")
                 return 0
 
-            # KROK 2: Pobierz wszystkie activity_executions z tego import job  
+            # KROK 2: Pobierz wszystkie activity_executions z tego import job
             activity_executions = self._find_imported_activity_executions(import_id, dataset_id)
             if not activity_executions:
                 print("ℹ️ No activity executions found for participation creation")
@@ -2296,9 +2201,9 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
     def _find_imported_activity_executions(self, import_id: str, dataset_id: str) -> List[Dict[str, Any]]:
         """
         Znajduje activity_executions zaimportowane w tym import job.
-        
+
         POPRAWKA: ActivityExecutions są embedded w Activity documents, nie w osobnej kolekcji!
-        
+
         Returns:
             Lista słowników z danymi activity_executions (mongo_id, source_id)
         """
@@ -2323,7 +2228,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 for ae_doc in activity_executions:
                     ae_id = str(ae_doc.get("id", "unknown"))
 
-                    # Znajdź source_entity_ref w ActivityExecution  
+                    # Znajdź source_entity_ref w ActivityExecution
                     source_id = ae_doc.get("external_id", "Unknown")
                     if source_id and source_id.startswith(":"):
                         source_id = source_id[1:]
@@ -2424,14 +2329,6 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             # from grisera import RecordingIn
             grisera_object.participation_id = mapped_participation_id
             grisera_object.registered_channel_id = mapped_registered_channel_id
-            # mapped_recording = RecordingIn(
-            #     participation_id=mapped_participation_id,
-            #     registered_channel_id=mapped_registered_channel_id,
-            #     external_id=grisera_object.external_id,
-            #     additional_properties=additional_properties,
-            #     import_job_id=import_id,
-            #     import_timestamp=datetime.now(),
-            # )
 
             # KROK 5: Zapisz Recording używając serwisu
             print(f"✅ Recording being saved with final data: {grisera_object.__dict__}")
@@ -2753,33 +2650,33 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             print(f"❌ Error finding Channel by source_id {source_id}: {e}")
             return ""
 
-    def _find_activity_execution_document_by_source_id(self, source_id: str, dataset_id: str) -> dict:
-        """
-        Znajduje pełny dokument ActivityExecution w MongoDB po source_id
-        """
-        try:
-            query_filter = {
-                "additional_properties": {
-                    "$elemMatch": {
-                        "key": "source_entity_ref",
-                        "value": f":{source_id}"
-                    }
-                }
-            }
-
-            activity_executions = self.mongo_api_service.get_documents(
-                collection_name=Collections.ACTIVITY_EXECUTION.value,
-                dataset_id=dataset_id,
-                query=query_filter
-            )
-
-            if activity_executions and len(activity_executions) > 0:
-                return activity_executions[0]
-            return {}
-
-        except Exception as e:
-            print(f"❌ Error finding ActivityExecution document by source_id {source_id}: {e}")
-            return {}
+    # def _find_activity_execution_document_by_source_id(self, source_id: str, dataset_id: str) -> dict:
+    #     """
+    #     Znajduje pełny dokument ActivityExecution w MongoDB po source_id
+    #     """
+    #     try:
+    #         query_filter = {
+    #             "additional_properties": {
+    #                 "$elemMatch": {
+    #                     "key": "source_entity_ref",
+    #                     "value": f":{source_id}"
+    #                 }
+    #             }
+    #         }
+    #
+    #         activity_executions = self.mongo_api_service.get_documents(
+    #             collection_name=Collections.ACTIVITY_EXECUTION.value,
+    #             dataset_id=dataset_id,
+    #             query=query_filter
+    #         )
+    #
+    #         if activity_executions and len(activity_executions) > 0:
+    #             return activity_executions[0]
+    #         return {}
+    #
+    #     except Exception as e:
+    #         print(f"❌ Error finding ActivityExecution document by source_id {source_id}: {e}")
+    #         return {}
 
     def _find_participant_state_document_by_source_id(self, source_id: str, dataset_id: str) -> dict:
         """
@@ -3267,41 +3164,41 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         try:
             source_entity_ref = grisera_object.external_id
             print(f"🔍 ObservableInformation source ID: {source_entity_ref}")
-            
+
             # 1. Mapuj modality_id (opcjonalne)
             mapped_modality_id = None
             if grisera_object.modality_id:
                 modality_source_id = str(grisera_object.modality_id)
                 print(f"🔍 Looking for Modality with source ID: {modality_source_id}")
                 modality_mongo_id = self._find_modality_by_source_id(modality_source_id, dataset_id)
-                
+
                 if modality_mongo_id:
                     mapped_modality_id = modality_mongo_id
                     print(f"🔗 Mapped modality_id: {grisera_object.modality_id} -> {mapped_modality_id}")
                 else:
                     print(f"❌ Could not find Modality in MongoDB for source ID: {modality_source_id}")
-            
+
             # 2. Mapuj life_activity_id (opcjonalne)
             mapped_life_activity_id = None
             if grisera_object.life_activity_id:
                 life_activity_source_id = str(grisera_object.life_activity_id)
                 print(f"🔍 Looking for LifeActivity with source ID: {life_activity_source_id}")
                 life_activity_mongo_id = self._find_life_activity_by_source_id(life_activity_source_id, dataset_id)
-                
+
                 if life_activity_mongo_id:
                     mapped_life_activity_id = life_activity_mongo_id
                     print(f"🔗 Mapped life_activity_id: {grisera_object.life_activity_id} -> {mapped_life_activity_id}")
                 else:
                     print(f"❌ Could not find LifeActivity in MongoDB for source ID: {life_activity_source_id}")
-            
+
             mapped_recording_id = None
             if grisera_object.recording_id:
                 recording_source_id = str(grisera_object.recording_id)
                 print(f"🔍 Looking for Recording with source ID: {recording_source_id}")
-                
+
                 # Znajdź Recording po external_id
                 recording_mongo_id = self._find_recording_by_source_id(recording_source_id, dataset_id)
-                
+
                 if recording_mongo_id:
                     mapped_recording_id = recording_mongo_id
                     print(f"🔗 Mapped recording_id: {grisera_object.recording_id} -> {mapped_recording_id}")
@@ -3315,7 +3212,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                         source_entity_ref or "unknown"
                     )
                     return None
-            
+
             # Jeśli nie mamy recording_id, nie możemy zapisać
             if not mapped_recording_id:
                 print(f"❌ Cannot save ObservableInformation without valid recording_id")
@@ -3327,7 +3224,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                     source_entity_ref or "unknown"
                 )
                 return None
-            
+
             # 4. Utwórz nowy ObservableInformationIn z zmapowanymi ID
             from grisera import ObservableInformationIn
             mapped_observable_info = ObservableInformationIn(
@@ -3337,11 +3234,11 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 external_id=source_entity_ref,
                 import_job_id=import_id
             )
-            
+
             # 5. Zapisz przez ObservableInformationService
             print(f"✅ ObservableInformation being saved with mapped data: {mapped_observable_info.__dict__}")
             result = self.services.get_observable_information_service().save_observable_information(mapped_observable_info, dataset_id)
-            
+
             # Sprawdź czy nie ma błędów
             if hasattr(result, 'errors') and result.errors:
                 print(f"❌ Error saving ObservableInformation: {result.errors}")
@@ -3353,17 +3250,17 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                     source_entity_ref or "unknown"
                 )
                 return None
-            
+
             saved_observable_info_id = str(getattr(result, 'id', 'unknown'))
-            
+
             print(f"🔗 Final ObservableInformation mappings:")
             print(f"   modality_id: {grisera_object.modality_id} -> {mapped_modality_id}")
             print(f"   life_activity_id: {grisera_object.life_activity_id} -> {mapped_life_activity_id}")
             print(f"   recording_id: {grisera_object.recording_id} -> {mapped_recording_id}")
             print(f"   ObservableInformation saved with ID: {saved_observable_info_id}")
-            
+
             return result
-            
+
         except Exception as e:
             print(f"❌ Error saving ObservableInformation with mapping: {e}")
             raise e
@@ -3376,19 +3273,19 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             query_filters = [
                 {"external_id": source_id},
             ]
-            
+
             for query_filter in query_filters:
                 modalities = self.mongo_api_service.get_documents(
                     collection_name=Collections.MODALITY.value,
                     dataset_id=dataset_id,
                     query=query_filter
                 )
-                
+
                 if modalities and len(modalities) > 0:
                     return str(modalities[0].get("id", ""))
-            
+
             return ""
-            
+
         except Exception as e:
             print(f"❌ Error finding Modality by source_id {source_id}: {e}")
             return ""
@@ -3403,19 +3300,19 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 {"external_id": source_id},
                 {"external_id": f":{source_id}"}
             ]
-            
+
             for query_filter in query_filters:
                 life_activities = self.mongo_api_service.get_documents(
                     collection_name=Collections.LIFE_ACTIVITY.value,
                     dataset_id=dataset_id,
                     query=query_filter
                 )
-                
+
                 if life_activities and len(life_activities) > 0:
                     return str(life_activities[0].get("id", ""))
-            
+
             return ""
-            
+
         except Exception as e:
             print(f"❌ Error finding LifeActivity by source_id {source_id}: {e}")
             return ""
@@ -3429,22 +3326,22 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             query_filters = [
                 {"external_id": source_id},
             ]
-            
+
             for query_filter in query_filters:
                 recordings = self.mongo_api_service.get_documents(
                     collection_name=Collections.RECORDING.value,
                     dataset_id=dataset_id,
                     query=query_filter
                 )
-                
+
                 if recordings and len(recordings) > 0:
                     found_id = str(recordings[0].get("id", ""))
                     print(f"✅ Found Recording: {source_id} -> MongoDB ID: {found_id}")
                     return found_id
-            
+
             print(f"❌ Recording not found for source_id: {source_id}")
             return ""
-            
+
         except Exception as e:
             print(f"❌ Error finding Recording by source_id {source_id}: {e}")
             return ""
@@ -3456,31 +3353,31 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         try:
             source_entity_ref = grisera_object.external_id
             print(f"🔍 TimeSeries source ID: {source_entity_ref}")
-            
+
             # 1. Mapuj measure_id (opcjonalne)
             mapped_measure_id = None
             if grisera_object.measure_id:
                 measure_source_id = str(grisera_object.measure_id)
                 print(f"🔍 Looking for Measure with source ID: {measure_source_id}")
                 measure_mongo_id = self._find_measure_by_source_id(measure_source_id, dataset_id)
-                
+
                 if measure_mongo_id:
                     mapped_measure_id = measure_mongo_id
                     print(f"🔗 Mapped measure_id: {grisera_object.measure_id} -> {mapped_measure_id}")
                 else:
                     print(f"❌ Could not find Measure in MongoDB for source ID: {measure_source_id}")
-            
+
             # 2. Mapuj observable_information_id (najważniejsze)
             mapped_observable_information_id = None
             mapped_observable_information_ids = []
-            
+
             if grisera_object.observable_information_id:
                 obs_info_source_id = str(grisera_object.observable_information_id)
                 print(f"🔍 Looking for ObservableInformation with source ID: {obs_info_source_id}")
-                
+
                 # Znajdź ObservableInformation po external_id w embedded liście
                 obs_info_mongo_id = self._find_observable_information_by_source_id(obs_info_source_id, dataset_id)
-                
+
                 if obs_info_mongo_id:
                     mapped_observable_information_id = obs_info_mongo_id
                     print(f"🔗 Mapped observable_information_id: {grisera_object.observable_information_id} -> {mapped_observable_information_id}")
@@ -3494,7 +3391,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                         source_entity_ref or "unknown"
                     )
                     # TimeSeries może istnieć bez ObservableInformation
-            
+
             # 3. Mapuj observable_information_ids (lista)
             if grisera_object.observable_information_ids:
                 for obs_id in grisera_object.observable_information_ids:
@@ -3503,7 +3400,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                     if obs_mongo_id:
                         mapped_observable_information_ids.append(obs_mongo_id)
                         print(f"🔗 Mapped observable_information_ids: {obs_id} -> {obs_mongo_id}")
-            
+
             # 4. Utwórz nowy TimeSeriesIn z zmapowanymi ID
             from grisera import TimeSeriesIn
             mapped_time_series = TimeSeriesIn(
@@ -3517,11 +3414,11 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                 import_job_id=import_id,
                 additional_properties=grisera_object.additional_properties
             )
-            
+
             # 5. Zapisz przez TimeSeriesService
             print(f"✅ TimeSeries being saved with mapped data: {mapped_time_series.__dict__}")
             result = self.services.get_time_series_service().save_time_series(mapped_time_series, dataset_id)
-            
+
             # Sprawdź czy nie ma błędów
             if hasattr(result, 'errors') and result.errors:
                 print(f"❌ Error saving TimeSeries: {result.errors}")
@@ -3533,17 +3430,17 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                     source_entity_ref or "unknown"
                 )
                 return None
-            
+
             saved_time_series_id = str(getattr(result, 'id', 'unknown'))
-            
+
             print(f"🔗 Final TimeSeries mappings:")
             print(f"   measure_id: {grisera_object.measure_id} -> {mapped_measure_id}")
             print(f"   observable_information_id: {grisera_object.observable_information_id} -> {mapped_observable_information_id}")
             print(f"   observable_information_ids: {grisera_object.observable_information_ids} -> {mapped_observable_information_ids}")
             print(f"   TimeSeries saved with ID: {saved_time_series_id}")
-            
+
             return result
-            
+
         except Exception as e:
             print(f"❌ Error saving TimeSeries with mapping: {e}")
             raise e
@@ -3555,7 +3452,7 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
         """
         try:
             print(f"🔍 Searching for ObservableInformation with external_id: {source_id}")
-            
+
             # Zapytanie MongoDB - szukaj Recording które mają ObservableInformation z danym external_id
             query_filter = {
                 "observable_informations": {
@@ -3564,27 +3461,27 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
                     }
                 }
             }
-            
+
             recordings = self.mongo_api_service.get_documents(
                 collection_name=Collections.RECORDING.value,
                 dataset_id=dataset_id,
                 query=query_filter
             )
-            
+
             if recordings and len(recordings) > 0:
                 recording = recordings[0]
                 observable_informations = recording.get("observable_informations", [])
-                
+
                 # Znajdź konkretny ObservableInformation w liście
                 for obs_info in observable_informations:
                     if obs_info.get("external_id") == source_id:
                         found_id = str(obs_info.get("id", ""))
                         print(f"✅ Found ObservableInformation: {source_id} -> MongoDB ID: {found_id}")
                         return found_id
-            
+
             print(f"❌ ObservableInformation not found for source_id: {source_id}")
             return ""
-            
+
         except Exception as e:
             print(f"❌ Error finding ObservableInformation by source_id {source_id}: {e}")
             return ""
@@ -3598,22 +3495,22 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
             query_filters = [
                 {"external_id": source_id}
             ]
-            
+
             for query_filter in query_filters:
                 measures = self.mongo_api_service.get_documents(
                     collection_name=Collections.MEASURE.value,
                     dataset_id=dataset_id,
                     query=query_filter
                 )
-                
+
                 if measures and len(measures) > 0:
                     found_id = str(measures[0].get("id", ""))
                     print(f"✅ Found Measure: {source_id} -> MongoDB ID: {found_id}")
                     return found_id
-            
+
             print(f"❌ Measure not found for source_id: {source_id}")
             return ""
-            
+
         except Exception as e:
             print(f"❌ Error finding Measure by source_id {source_id}: {e}")
             return ""

@@ -27,8 +27,8 @@ from grisera import measure_name_router
 from grisera import channel_router
 from grisera import dataset_router
 
-# Import nowego routera do importu danych
-from data_import.data_import_router import data_import_router
+from data_operations.data_import.data_import_router import data_import_router
+from data_operations.data_export.data_export_router import data_export_router
 
 app = FastAPI(
     title="GRISERA API",
@@ -71,8 +71,9 @@ app.include_router(scenario_router)
 app.include_router(time_series_router)
 app.include_router(dataset_router)
 
-# Dodanie nowego routera do importu danych
+# Dodanie routerów do importu i eksportu danych
 app.include_router(data_import_router)
+app.include_router(data_export_router)
 
 app.dependency_overrides[service.get_service_factory] = mongo_service.get_service_factory
 
