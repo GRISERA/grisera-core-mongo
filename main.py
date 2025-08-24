@@ -1,8 +1,10 @@
 from grisera import activity_router
 from grisera import activity_execution_router
+from grisera import additional_parameter_router
 from grisera import arrangement_router
 from grisera import appearance_router
 from grisera import experiment_router
+from grisera import file_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from grisera import get_links
@@ -47,10 +49,12 @@ app.add_middleware(
 
 app.include_router(activity_router)
 app.include_router(activity_execution_router)
+app.include_router(additional_parameter_router)
 app.include_router(appearance_router)
 app.include_router(arrangement_router)
 app.include_router(channel_router)
 app.include_router(experiment_router)
+app.include_router(file_router)
 app.include_router(life_activity_router)
 app.include_router(measure_router)
 app.include_router(measure_name_router)
