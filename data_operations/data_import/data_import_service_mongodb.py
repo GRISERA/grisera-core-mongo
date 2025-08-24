@@ -1,12 +1,6 @@
-import uuid
-from typing import Union, List, Dict, Any, Set
-import json
-from datetime import datetime
+from typing import List
 import threading
 
-from    data_operations.utils import decode_file_content, remove_prefix
-from data_operations.converters import ENTITY_CONVERTERS, BaseEntityConverter
-from data_operations.entity_type_mapping import EntityTypeMapping
 from data_operations.file_operations_service import FileOperationsStatusService
 from data_operations.file_operations_model import FileOperationIn, OperationType
 from data_operations.data_import.json_import_service import JsonImportService
@@ -17,30 +11,10 @@ from data_operations.file_operations_model import (
     FileOperationError,
     OperationStatus
 )
-from mongo_service.mongo_api_service import MongoApiService
 from mongo_service.service_mixins import GenericMongoServiceMixin
-from mongo_service.collection_mapping import Collections
 
-# Import GRISERA serwisów i modeli
 from services.mongo_services import MongoServiceFactory
-from grisera import (
-    ActivityIn, ActivityService,
-    ChannelIn, ChannelService,
-    MeasureNameIn, MeasureNameService,
-    ModalityIn, ModalityService,
-    LifeActivityIn, LifeActivityService,
-    ArrangementIn, ArrangementService,
-    ParticipantIn, ParticipantService,
-    TimeSeriesIn, TimeSeriesService,
-    PropertyIn,
-    ExperimentIn, ExperimentService,
-    ActivityExecutionIn, ActivityExecutionService,
-    ScenarioIn, ScenarioService,
-    ParticipationIn, ParticipationService,
-    RecordingIn, RecordingService,
-    RegisteredDataIn,
-    RegisteredChannelIn
-)
+
 
 
 class DataImportServiceMongoDB(GenericMongoServiceMixin):
@@ -50,19 +24,8 @@ class DataImportServiceMongoDB(GenericMongoServiceMixin):
 
     def __init__(self):
         super().__init__()
-        self.mongo_api_service = MongoApiService()
-        self.model_out_class = FileOperationOut
-        self.services = MongoServiceFactory()
         self.file_ops_service = FileOperationsStatusService()
         self.json_import_service = JsonImportService()
-
-        # Globalny licznik dla nazw Scenario Execution FIXME: tymczasowe rozwiązanie
-        self.scenario_execution_counter = 1
-
-        print("🔧 DataImportServiceMongoDB initialized with refactored components:")
-        print("   - Entity converters for GRISERA object creation")
-        print("   - ScenarioBuilderService for scenario construction")
-        print("   - Utils module for helper functions")
 
     def _background_import_processor(self, import_data: FileOperationIn, import_id: str):
         """

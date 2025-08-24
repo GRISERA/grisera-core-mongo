@@ -1,7 +1,11 @@
 from typing import Dict, Any, List
 from grisera import TimeSeriesIn
-from .base import BaseEntityConverter
+from .base import BaseEntityConverter, DEBUG
+from .measure_converter import MeasureConverter
+from .observable_information_converter import ObservableInformationConverter
 from data_operations.utils import remove_prefix
+from mongo_service.collection_mapping import Collections
+from services.mongo_services import MongoServiceFactory
 
 
 class TimeSeriesConverter(BaseEntityConverter[TimeSeriesIn]):
@@ -9,7 +13,11 @@ class TimeSeriesConverter(BaseEntityConverter[TimeSeriesIn]):
     JSON_KEY_CANDIDATES_OBS_INFO_ID = ["hasObservableInformation", "observable_information_id"]
     JSON_KEY_CANDIDATES_SOURCE = ["timeSeriesSource", "hasSource", "source"]
     JSON_KEY_CANDIDATES_TYPE = ["hasType", "timeSeriesType", "type"]
-
+    def __init__(self, import_id: str):
+        super().__init__(import_id)
+        self.measure_service = MeasureConverter(import_id)
+        self.observable_information_service = ObservableInformationConverter(import_id)
+        self.services = MongoServiceFactory()
     def convert(self, json_entity: Dict[str, Any]) -> TimeSeriesIn:
         external_id = self._get_external_id(json_entity)
         # Użyj oryginalnego @id dla logowania (po usunięciu prefixu), jeśli istnieje
@@ -78,3 +86,110 @@ class TimeSeriesConverter(BaseEntityConverter[TimeSeriesIn]):
 
         return observable_info_ids
 
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str) -> TimeSeriesIn:
+        return self._save_time_series_with_mapping(self.convert(json_entity), dataset_id, import_id)
+
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        return self._find_by_source_id(source_id, dataset_id, Collections.TIME_SERIES)
+
+    def _save_time_series_with_mapping(self, grisera_object, dataset_id: str, import_id: str):
+        """
+        Zapisuje TimeSeries z mapowaniem observable_information_id i measure_id na MongoDB IDs.
+        """
+        try:
+            source_entity_ref = grisera_object.external_id
+            print(f"🔍 TimeSeries source ID: {source_entity_ref}")
+
+            # 1. Mapuj measure_id (opcjonalne)
+            mapped_measure_id = None
+            if grisera_object.measure_id:
+                measure_source_id = str(grisera_object.measure_id)
+                print(f"🔍 Looking for Measure with source ID: {measure_source_id}")
+                measure_mongo_id = self.measure_service.find_by_source_id(measure_source_id, dataset_id)
+
+                if measure_mongo_id:
+                    mapped_measure_id = measure_mongo_id
+                    print(f"🔗 Mapped measure_id: {grisera_object.measure_id} -> {mapped_measure_id}")
+                else:
+                    print(f"❌ Could not find Measure in MongoDB for source ID: {measure_source_id}")
+
+            # 2. Mapuj observable_information_id (najważniejsze)
+            mapped_observable_information_id = None
+            mapped_observable_information_ids = []
+
+            if grisera_object.observable_information_id:
+                obs_info_source_id = str(grisera_object.observable_information_id)
+                print(f"🔍 Looking for ObservableInformation with source ID: {obs_info_source_id}")
+
+                # Znajdź ObservableInformation po external_id w embedded liście
+                obs_info_mongo_id = self.observable_information_service.find_by_source_id(obs_info_source_id, dataset_id)
+
+                if obs_info_mongo_id:
+                    mapped_observable_information_id = obs_info_mongo_id
+                    print(
+                        f"🔗 Mapped observable_information_id: {grisera_object.observable_information_id} -> {mapped_observable_information_id}")
+                else:
+                    print(f"❌ Could not find ObservableInformation in MongoDB for source ID: {obs_info_source_id}")
+                    self._log_import_error(
+                        import_id,
+                        dataset_id,
+                        "OBSERVABLE_INFO_NOT_FOUND_FOR_TIME_SERIES",
+                        f"ObservableInformation with source ID '{obs_info_source_id}' not found for TimeSeries",
+                        source_entity_ref or "unknown"
+                    )
+                    # TimeSeries może istnieć bez ObservableInformation
+
+            # 3. Mapuj observable_information_ids (lista)
+            if grisera_object.observable_information_ids:
+                for obs_id in grisera_object.observable_information_ids:
+                    obs_source_id = str(obs_id)
+                    obs_mongo_id = self.observable_information_service.find_by_source_id(obs_source_id, dataset_id)
+                    if obs_mongo_id:
+                        mapped_observable_information_ids.append(obs_mongo_id)
+                        print(f"🔗 Mapped observable_information_ids: {obs_id} -> {obs_mongo_id}")
+
+            # 4. Utwórz nowy TimeSeriesIn z zmapowanymi ID
+            from grisera import TimeSeriesIn
+            mapped_time_series = TimeSeriesIn(
+                measure_id=mapped_measure_id,
+                observable_information_id=mapped_observable_information_id,
+                observable_information_ids=mapped_observable_information_ids if mapped_observable_information_ids else None,
+                type=grisera_object.type,
+                source=grisera_object.source,
+                signal_values=grisera_object.signal_values,
+                external_id=source_entity_ref,
+                import_job_id=import_id,
+                additional_properties=grisera_object.additional_properties
+            )
+
+            # 5. Zapisz przez TimeSeriesService
+            print(f"✅ TimeSeries being saved with mapped data: {mapped_time_series.__dict__}")
+            result = self.services.get_time_series_service().save_time_series(mapped_time_series, dataset_id)
+
+            # Sprawdź czy nie ma błędów
+            if hasattr(result, 'errors') and result.errors:
+                print(f"❌ Error saving TimeSeries: {result.errors}")
+                self._log_import_error(
+                    import_id,
+                    dataset_id,
+                    "TIME_SERIES_SAVE_ERROR",
+                    f"Error saving TimeSeries: {result.errors}",
+                    source_entity_ref or "unknown"
+                )
+                return None
+
+            saved_time_series_id = str(getattr(result, 'id', 'unknown'))
+
+            print(f"🔗 Final TimeSeries mappings:")
+            print(f"   measure_id: {grisera_object.measure_id} -> {mapped_measure_id}")
+            print(
+                f"   observable_information_id: {grisera_object.observable_information_id} -> {mapped_observable_information_id}")
+            print(
+                f"   observable_information_ids: {grisera_object.observable_information_ids} -> {mapped_observable_information_ids}")
+            print(f"   TimeSeries saved with ID: {saved_time_series_id}")
+
+            return result
+
+        except Exception as e:
+            print(f"❌ Error saving TimeSeries with mapping: {e}")
+            raise e

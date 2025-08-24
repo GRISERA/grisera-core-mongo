@@ -1,7 +1,8 @@
 from typing import Dict, Any
 from grisera import ArrangementIn
-from .base import BaseEntityConverter
+from .base import BaseEntityConverter, DEBUG
 from data_operations.utils import remove_prefix
+from mongo_service.collection_mapping import Collections
 
 
 class ArrangementConverter(BaseEntityConverter[ArrangementIn]):
@@ -25,7 +26,14 @@ class ArrangementConverter(BaseEntityConverter[ArrangementIn]):
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_TYPE_FIELD)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
 
-        print(f"📝 Creating ArrangementIn: arrangement_type='{arrangement_type}', external_id='{arrangement.external_id}', import_job_id='{arrangement.import_job_id}', properties={len(additional_properties)} (including common)")
+        if DEBUG:
+            print(f"✅ Arrangement being saved with final data: {arrangement.__dict__}")
+
         return arrangement
 
 
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str) -> ArrangementIn:
+        return self.services.get_arrangement_service().save_arrangement(self.convert(json_entity))
+
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        return self._find_by_source_id(source_id, dataset_id, Collections.ARRANGEMENT)

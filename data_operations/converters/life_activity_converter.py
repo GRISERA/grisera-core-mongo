@@ -1,7 +1,8 @@
 from typing import Dict, Any
 from grisera import LifeActivityIn
-from .base import BaseEntityConverter
+from .base import BaseEntityConverter, DEBUG
 from data_operations.utils import remove_prefix
+from mongo_service.collection_mapping import Collections
 
 
 class LifeActivityConverter(BaseEntityConverter[LifeActivityIn]):
@@ -25,7 +26,14 @@ class LifeActivityConverter(BaseEntityConverter[LifeActivityIn]):
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_MAIN_FIELD)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
 
-        print(f"📝 Creating LifeActivityIn: life_activity_name='{life_activity_name}', external_id='{life_activity.external_id}', import_job_id='{life_activity.import_job_id}', properties={len(additional_properties)} (including common)")
+        if DEBUG:
+            print(f"✅ LifeActivity being saved with final data: {life_activity.__dict__}")
         return life_activity
+
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str) -> LifeActivityIn:
+        return self.services.get_life_activity_service().save_life_activity(self.convert(json_entity), dataset_id)
+
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        return self._find_by_source_id(source_id, dataset_id, Collections.LIFE_ACTIVITY)
 
 

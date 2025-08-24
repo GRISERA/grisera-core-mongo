@@ -1,7 +1,8 @@
 from typing import Dict, Any
 from grisera import RegisteredDataIn
-from .base import BaseEntityConverter
+from .base import BaseEntityConverter, DEBUG
 from data_operations.utils import remove_prefix
+from mongo_service.collection_mapping import Collections
 
 
 class RegisteredDataConverter(BaseEntityConverter[RegisteredDataIn]):
@@ -39,5 +40,11 @@ class RegisteredDataConverter(BaseEntityConverter[RegisteredDataIn]):
         print(f"📝 Creating RegisteredDataIn: name='{clean_name_for_log}', source='{source}', external_id='{registered_data.external_id}', import_job_id='{registered_data.import_job_id}', properties={len(additional_properties)} (including common)")
         registered_data.additional_properties = additional_properties
         return registered_data
+
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str) -> RegisteredDataIn:
+        return self.services.get_registered_data_service().save_registered_data(self.convert(json_entity), dataset_id)
+
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        return self._find_by_source_id(source_id, dataset_id, Collections.REGISTERED_DATA)
 
 

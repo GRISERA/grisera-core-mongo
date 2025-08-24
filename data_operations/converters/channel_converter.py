@@ -1,7 +1,8 @@
 from typing import Dict, Any
 from grisera import ChannelIn
-from .base import BaseEntityConverter
+from .base import BaseEntityConverter, DEBUG
 from data_operations.utils import remove_prefix
+from mongo_service.collection_mapping import Collections
 
 
 class ChannelConverter(BaseEntityConverter[ChannelIn]):
@@ -26,7 +27,14 @@ class ChannelConverter(BaseEntityConverter[ChannelIn]):
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_MAIN_FIELD)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
         channel.additional_properties = additional_properties
-        print(f"📝 Creating ChannelIn: channel_name='{channel_name}', external_id='{channel.external_id}', import_job_id='{channel.import_job_id}', properties={len(additional_properties)} (including common)")
+        if DEBUG:
+            print(f"📝 Creating ChannelIn: channel_name='{channel_name}', external_id='{channel.external_id}', import_job_id='{channel.import_job_id}', properties={len(additional_properties)} (including common)")
         return channel
+
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str): # -> ChannelIn:
+        return self.services.get_channel_service().save_channel(self.convert(json_entity), dataset_id)
+
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        return self._find_by_source_id(source_id, dataset_id, Collections.CHANNEL)
 
 

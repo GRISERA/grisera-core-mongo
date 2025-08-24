@@ -181,21 +181,28 @@ async def download_export(
             )
         
         # DUMMY IMPLEMENTATION - zwróć JSON z informacją o eksporcie
+        # Używamy tylko pól dostępnych w FileOperationOut
         dummy_export_data = {
             "export_id": export_id,
             "dataset_id": dataset_id,
-            "export_format": export_status.export_format,
-            "export_scope": export_status.export_scope,
-            "exported_records": export_status.exported_records,
+            "file_type": export_status.file_type,
+            "operation_type": export_status.operation_type.value,
+            "status": export_status.status.value,
+            "processed_records": export_status.processed_records,
             "created_at": export_status.created_at,
+            "description": export_status.description,
             "file_info": {
-                "file_path": export_status.file_path,
-                "file_size": export_status.file_size,
-                "download_url": export_status.download_url
+                "file_name": export_status.file_name,
+                "file_type": export_status.file_type
             },
             "dummy_data": {
                 "message": "This is a dummy export response",
-                "note": "Real implementation will return actual exported data"
+                "note": "Real implementation will return actual exported data",
+                "sample_records": [
+                    {"id": 1, "name": "Sample Export Record 1", "type": "dummy"},
+                    {"id": 2, "name": "Sample Export Record 2", "type": "dummy"},
+                    {"id": 3, "name": "Sample Export Record 3", "type": "dummy"}
+                ]
             }
         }
         

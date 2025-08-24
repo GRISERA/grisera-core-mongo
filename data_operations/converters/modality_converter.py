@@ -1,7 +1,8 @@
 from typing import Dict, Any
 from grisera import ModalityIn
-from .base import BaseEntityConverter
+from .base import BaseEntityConverter, DEBUG
 from data_operations.utils import remove_prefix
+from mongo_service.collection_mapping import Collections
 
 
 class ModalityConverter(BaseEntityConverter[ModalityIn]):
@@ -25,7 +26,14 @@ class ModalityConverter(BaseEntityConverter[ModalityIn]):
         processed_clean_keys.extend(self.JSON_KEY_CANDIDATES_FOR_MAIN_FIELD)
         self._add_remaining_properties(json_entity, additional_properties, processed_clean_keys)
 
-        print(f"📝 Creating ModalityIn: modality_name='{modality_name}', external_id='{modality.external_id}', import_job_id='{modality.import_job_id}', properties={len(additional_properties)} (including common)")
+        if DEBUG:
+            print(f"📝 Creating ModalityIn: modality_name='{modality_name}', external_id='{modality.external_id}', import_job_id='{modality.import_job_id}', properties={len(additional_properties)} (including common)")
         return modality
+
+    def save(self, json_entity: Dict[str, Any], dataset_id: str, import_id: str): # -> ModalityIn:
+        return  self.services.get_modality_service().save_modality(self.convert(json_entity), dataset_id)
+
+    def find_by_source_id(self, source_id: str, dataset_id: str) -> str:
+        return self._find_by_source_id(source_id, dataset_id, Collections.MODALITY)
 
 
