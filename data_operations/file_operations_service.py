@@ -1,16 +1,17 @@
 import uuid
-from typing import List, Optional, Dict, Any
 from datetime import datetime
+from typing import List, Optional, Dict, Any
+
+from grisera.clients.minio_client import MinIOClient
 
 from data_operations.file_operations_model import (
     FileOperationIn,
     FileOperationOut,
-    FileOperationError,
     OperationStatus
 )
+from mongo_service.collection_mapping import Collections
 from mongo_service.mongo_api_service import MongoApiService
 from mongo_service.service_mixins import GenericMongoServiceMixin
-from mongo_service.collection_mapping import Collections
 
 
 class FileOperationsStatusService(GenericMongoServiceMixin):
@@ -22,6 +23,62 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
         super().__init__()
         self.mongo_api_service = MongoApiService()
         self.model_out_class = FileOperationOut
+        self.file_operations_minio_client = MinIOClient("file-operations")
+
+    def _upload_file_to_minio(self, file_content: str, operation_id: str, file_name: str, file_type: str) -> str:
+        """
+        Upload file content to MinIO and return the object path
+        
+        Args:
+            file_content: File content to upload
+            operation_id: Operation ID for unique naming
+            file_name: Original file name
+            file_type: File type/mime type
+            
+        Returns:
+            MinIO object path
+        """
+        try:
+            # Generate unique object name: operation_id/original_filename
+            object_name = f"{operation_id}/{file_name}"
+
+            # Convert string content to bytes
+            file_data = file_content.encode('utf-8') if isinstance(file_content, str) else file_content
+
+            # Determine content type
+            content_type = file_type if file_type else "application/octet-stream"
+            if file_name.lower().endswith('.json'):
+                content_type = "application/json"
+            elif file_name.lower().endswith('.owl') or file_name.lower().endswith('.xml'):
+                content_type = "application/xml"
+
+            # Upload to MinIO
+            self.file_operations_minio_client.upload_file(object_name, file_data, content_type)
+            print(f"✅ File uploaded to MinIO: {object_name} ({len(file_data)} bytes)")
+
+            return object_name
+
+        except Exception as e:
+            print(f"❌ Error uploading file to MinIO: {str(e)}")
+            raise e
+
+    def get_file_content_from_minio(self, operation_id: str, dataset_id: str) -> Optional[str]:
+        """
+        Retrieve file content from MinIO for a given operation
+        """
+        try:
+            operation = self.get_operation_status(operation_id, dataset_id)
+            minio_object_path = operation.additional_data.get("minio_object_path")
+
+            if not minio_object_path:
+                return None
+
+            file_response = self.file_operations_minio_client.get_file(minio_object_path)
+            return file_response.read().decode('utf-8')
+
+        except Exception as e:
+            print(f"❌ Error retrieving file from MinIO: {str(e)}")
+            return None
 
     def create_operation(self, operation_data: FileOperationIn) -> str:
         """
@@ -34,10 +91,24 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             ID utworzonej operacji (MongoDB ObjectId jako string)
         """
         print(f"🆕 Creating new file operation: {operation_data.operation_type.value} - {operation_data.file_name}")
-        
+
         try:
             current_time = datetime.utcnow().isoformat()
-            
+            additional_data = operation_data.additional_data or {}
+
+            # Upload file to MinIO
+            if operation_data.file_content:
+                # Create temporary ID for MinIO upload
+                temp_id = str(uuid.uuid4())
+                minio_object_path = self._upload_file_to_minio(
+                    operation_data.file_content,
+                    temp_id,
+                    operation_data.file_name,
+                    operation_data.file_type
+                )
+                additional_data["minio_object_path"] = minio_object_path
+                additional_data["file_content_size"] = len(operation_data.file_content)
+
             operation_record_data = {
                 "file_name": operation_data.file_name,
                 "operation_type": operation_data.operation_type.value,
@@ -51,19 +122,18 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
                 "created_at": current_time,
                 "updated_at": current_time,
                 "error_messages": [],
-                "additional_data": operation_data.additional_data or {}
+                "additional_data": additional_data
             }
 
-            # Pozwól MongoDB wygenerować ObjectId automatycznie
             created_id = self.mongo_api_service.create_document_from_dict(
                 operation_record_data,
                 Collections.FILE_OPERATIONS.value,
                 operation_data.dataset_id
             )
-            
+
             print(f"✅ File operation created with ID: {created_id}")
-            return created_id  # Zwróć ObjectId jako string
-            
+            return created_id
+
         except Exception as e:
             print(f"❌ Error creating file operation: {str(e)}")
             raise e
@@ -80,7 +150,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             True jeśli aktualizacja się powiodła
         """
         print(f"🚀 Starting processing for operation: {operation_uuid}")
-        
+
         return self._update_operation_status(
             operation_uuid=operation_uuid,
             dataset_id=dataset_id,
@@ -90,8 +160,8 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             }
         )
 
-    def end_processing(self, operation_uuid: str, dataset_id: str, 
-                      processed_records: int = 0, error_count: int = 0) -> bool:
+    def end_processing(self, operation_uuid: str, dataset_id: str,
+                       processed_records: int = 0, error_count: int = 0) -> bool:
         """
         Zmienia status operacji na COMPLETED
         
@@ -105,7 +175,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             True jeśli aktualizacja się powiodła
         """
         print(f"✅ Ending processing for operation: {operation_uuid} - {processed_records} records processed, {error_count} errors")
-        
+
         return self._update_operation_status(
             operation_uuid=operation_uuid,
             dataset_id=dataset_id,
@@ -118,8 +188,8 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             }
         )
 
-    def fail_operation(self, operation_uuid: str, dataset_id: str, 
-                      error_messages: List[str] = None) -> bool:
+    def fail_operation(self, operation_uuid: str, dataset_id: str,
+                       error_messages: List[str] = None) -> bool:
         """
         Zmienia status operacji na FAILED
         
@@ -133,7 +203,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
         """
         error_messages = error_messages or []
         print(f"❌ Failing operation: {operation_uuid} - {len(error_messages)} error messages")
-        
+
         return self._update_operation_status(
             operation_uuid=operation_uuid,
             dataset_id=dataset_id,
@@ -156,7 +226,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             Obiekt FileOperationOut z danymi operacji
         """
         print(f"🔍 Getting status for operation: {operation_uuid}")
-        
+
         try:
             # Szukaj bezpośrednio po MongoDB _id (ObjectId jako string)
             operation_doc = self.mongo_api_service.get_document(
@@ -185,7 +255,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             return FileOperationOut(
                 id=operation_uuid,
                 file_name="unknown",
-                operation_type="unknown", 
+                operation_type="unknown",
                 dataset_id=dataset_id,
                 status=OperationStatus.FAILED,
                 error_messages=[f"Error retrieving status: {str(e)}"]
@@ -202,7 +272,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             Lista operacji
         """
         print(f"📋 Fetching all operations for dataset: {dataset_id}")
-        
+
         try:
             query = {"dataset_id": dataset_id}
             operation_docs = self.mongo_api_service.get_documents(
@@ -223,7 +293,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             print(f"❌ Error fetching operations for dataset {dataset_id}: {str(e)}")
             return []
 
-    def log_error(self, operation_uuid: str, dataset_id: str, error_type: str, 
+    def log_error(self, operation_uuid: str, dataset_id: str, error_type: str,
                   error_message: str, entity_str: str = None, context: Dict[str, Any] = None) -> bool:
         """
         Loguje błąd operacji do bazy danych
@@ -240,7 +310,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             True jeśli logowanie się powiodło
         """
         print(f"📝 Logging error for operation {operation_uuid}: {error_type} - {error_message}")
-        
+
         try:
             error_data = {
                 "id": str(uuid.uuid4()),
@@ -258,10 +328,10 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
                 Collections.FILE_OPERATION_ERRORS.value,
                 dataset_id
             )
-            
+
             print("✅ Error logged successfully")
             return True
-            
+
         except Exception as e:
             print(f"❌ Error logging error: {str(e)}")
             return False
@@ -278,7 +348,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             Liczba błędów
         """
         print(f"🔍 Getting error count for operation: {operation_uuid}")
-        
+
         try:
             query_filter = {"operation_id": operation_uuid}
             error_documents = self.mongo_api_service.get_documents(
@@ -286,7 +356,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
                 dataset_id=dataset_id,
                 query=query_filter
             )
-            
+
             error_count = len(error_documents) if error_documents else 0
             print(f"📊 Found {error_count} errors for operation {operation_uuid}")
             return error_count
@@ -295,8 +365,8 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             print(f"❌ Error getting error count: {e}")
             return 0
 
-    def fail_and_get_operation(self, operation_id: str, dataset_id: str, 
-                              error_message: str) -> FileOperationOut:
+    def fail_and_get_operation(self, operation_id: str, dataset_id: str,
+                               error_message: str) -> FileOperationOut:
         """
         Ustawia istniejącą operację na status FAILED i zwraca zaktualizowany obiekt
         
@@ -309,25 +379,25 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             Zaktualizowany obiekt FileOperationOut ze statusem FAILED
         """
         print(f"❌ Setting operation {operation_id} to FAILED status")
-        
+
         # Ustaw status na FAILED
         success = self.fail_operation(
             operation_uuid=operation_id,
             dataset_id=dataset_id,
             error_messages=[error_message]
         )
-        
+
         if success:
             print(f"✅ Operation {operation_id} successfully set to FAILED")
         else:
             print(f"⚠️ Warning: Failed to update operation {operation_id} status in database")
-        
+
         # Pobierz i zwróć zaktualizowaną operację
         updated_operation = self.get_operation_status(operation_id, dataset_id)
         return updated_operation
 
-    def _update_operation_status(self, operation_uuid: str, dataset_id: str, 
-                                status: OperationStatus, additional_fields: Dict[str, Any] = None) -> bool:
+    def _update_operation_status(self, operation_uuid: str, dataset_id: str,
+                                 status: OperationStatus, additional_fields: Dict[str, Any] = None) -> bool:
         """
         Prywatna metoda do aktualizacji statusu operacji
         
@@ -342,7 +412,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
         """
         try:
             print(f"🔄 Updating operation {operation_uuid} status to: {status.value}")
-            
+
             # Pobierz istniejący dokument bezpośrednio po ID
             existing_doc = self.mongo_api_service.get_document(
                 operation_uuid,  # operation_uuid to ObjectId jako string
@@ -359,7 +429,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
                 "status": status.value,
                 "updated_at": datetime.utcnow().isoformat()
             }
-            
+
             if additional_fields:
                 fields_to_update.update(additional_fields)
 
@@ -373,10 +443,10 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
                 new_document=updated_document,
                 dataset_id=dataset_id
             )
-            
+
             print(f"✅ Operation status updated successfully to: {status.value}")
             return True
-            
+
         except Exception as e:
             print(f"❌ Error updating operation status: {str(e)}")
             return False
