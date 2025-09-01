@@ -293,6 +293,71 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             print(f"❌ Error fetching operations for dataset {dataset_id}: {str(e)}")
             return []
 
+    def increment_progress_counter(self, operation_uuid: str, dataset_id: str, counter_name: str) -> bool:
+        """
+        Zwiększa licznik postępu dla określonego typu encji
+        """
+        try:
+            existing_doc = self.mongo_api_service.get_document(
+                operation_uuid,
+                Collections.FILE_OPERATIONS.value,
+                dataset_id
+            )
+
+            if not existing_doc:
+                return False
+
+            # Pobierz obecną wartość licznika lub ustaw na 0
+            current_count = existing_doc.get("additional_data", {}).get(counter_name, 0)
+            new_count = current_count + 1
+            
+            # Zaktualizuj licznik
+            existing_doc["additional_data"][counter_name] = new_count
+            existing_doc["updated_at"] = datetime.utcnow().isoformat()
+
+            self.mongo_api_service.update_document_with_dict(
+                collection_name=Collections.FILE_OPERATIONS.value,
+                id=operation_uuid,
+                new_document=existing_doc,
+                dataset_id=dataset_id
+            )
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error incrementing progress counter: {str(e)}")
+            return False
+
+    def set_total_count(self, operation_uuid: str, dataset_id: str, counter_name: str, total_count: int) -> bool:
+        """
+        Ustawia total count dla określonego typu encji
+        """
+        try:
+            existing_doc = self.mongo_api_service.get_document(
+                operation_uuid,
+                Collections.FILE_OPERATIONS.value,
+                dataset_id
+            )
+
+            if not existing_doc:
+                return False
+
+            existing_doc["additional_data"][counter_name] = total_count
+            existing_doc["updated_at"] = datetime.utcnow().isoformat()
+
+            self.mongo_api_service.update_document_with_dict(
+                collection_name=Collections.FILE_OPERATIONS.value,
+                id=operation_uuid,
+                new_document=existing_doc,
+                dataset_id=dataset_id
+            )
+            
+            return True
+            
+        except Exception as e:
+            print(f"❌ Error setting total count: {str(e)}")
+            return False
+
     def log_error(self, operation_uuid: str, dataset_id: str, error_type: str,
                   error_message: str, entity_str: str = None, context: Dict[str, Any] = None) -> bool:
         """
