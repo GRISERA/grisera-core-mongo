@@ -147,7 +147,7 @@ class RegisteredDataConverter(BaseEntityConverter[RegisteredDataIn]):
         print(f"🔍 Processing source file: '{filename}' from '{source}'")
 
         # Try to find existing file
-        existing_object_name = None # self._find_file_in_dataset(filename, dataset_id)
+        existing_object_name = self._find_file_in_dataset(filename, dataset_id)
 
         if existing_object_name:
             # File found - copy it to new location
