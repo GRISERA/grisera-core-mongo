@@ -7,7 +7,9 @@ from grisera.clients.minio_client import MinIOClient
 from data_operations.file_operations_model import (
     FileOperationIn,
     FileOperationOut,
-    OperationStatus
+    FileOperationError,
+    OperationStatus,
+    OperationType
 )
 from mongo_service.collection_mapping import Collections
 from mongo_service.mongo_api_service import MongoApiService
@@ -28,13 +30,13 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
     def _upload_file_to_minio(self, file_content: str, operation_id: str, file_name: str, file_type: str) -> str:
         """
         Upload file content to MinIO and return the object path
-        
+
         Args:
             file_content: File content to upload
             operation_id: Operation ID for unique naming
             file_name: Original file name
             file_type: File type/mime type
-            
+
         Returns:
             MinIO object path
         """
@@ -133,7 +135,6 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
 
             print(f"✅ File operation created with ID: {created_id}")
             return created_id
-
         except Exception as e:
             print(f"❌ Error creating file operation: {str(e)}")
             raise e
@@ -261,20 +262,23 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
                 error_messages=[f"Error retrieving status: {str(e)}"]
             )
 
-    def get_operations_by_dataset_id(self, dataset_id: str) -> List[FileOperationOut]:
+    def get_operations_by_dataset_id(self, dataset_id: str, operation_type: Optional[OperationType] = None) -> List[FileOperationOut]:
         """
-        Pobiera wszystkie operacje dla danego ID datasetu
+        Pobiera operacje dla danego ID datasetu z opcjonalną filtracją po typie
         
         Args:
             dataset_id: ID datasetu
-            
+            operation_type: Opcjonalny typ operacji do filtrowania (import/export)
+
         Returns:
             Lista operacji
         """
-        print(f"📋 Fetching all operations for dataset: {dataset_id}")
-
+        print(f"📋 Fetching operations for dataset: {dataset_id}" + (f" (type: {operation_type.value})" if operation_type else ""))
         try:
             query = {"dataset_id": dataset_id}
+            if operation_type:
+                query["operation_type"] = operation_type.value
+
             operation_docs = self.mongo_api_service.get_documents(
                 collection_name=Collections.FILE_OPERATIONS.value,
                 dataset_id=dataset_id,
@@ -282,11 +286,11 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             )
 
             if not operation_docs:
-                print(f"ℹ️ No operations found for dataset: {dataset_id}")
+                print(f"ℹ️ No operations found for dataset: {dataset_id}" + (f" with type: {operation_type.value}" if operation_type else ""))
                 return []
 
             operations_list = [FileOperationOut(**doc) for doc in operation_docs]
-            print(f"✅ Found {len(operations_list)} operations for dataset: {dataset_id}")
+            print(f"✅ Found {len(operations_list)} operations for dataset: {dataset_id}" + (f" with type: {operation_type.value}" if operation_type else ""))
             return operations_list
 
         except Exception as e:
@@ -310,7 +314,7 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
             # Pobierz obecną wartość licznika lub ustaw na 0
             current_count = existing_doc.get("additional_data", {}).get(counter_name, 0)
             new_count = current_count + 1
-            
+
             # Zaktualizuj licznik
             existing_doc["additional_data"][counter_name] = new_count
             existing_doc["updated_at"] = datetime.utcnow().isoformat()
@@ -321,9 +325,9 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
                 new_document=existing_doc,
                 dataset_id=dataset_id
             )
-            
+
             return True
-            
+
         except Exception as e:
             print(f"❌ Error incrementing progress counter: {str(e)}")
             return False
@@ -351,12 +355,25 @@ class FileOperationsStatusService(GenericMongoServiceMixin):
                 new_document=existing_doc,
                 dataset_id=dataset_id
             )
-            
+
             return True
-            
+
         except Exception as e:
             print(f"❌ Error setting total count: {str(e)}")
             return False
+
+    def get_operations_by_dataset_id_and_type(self, dataset_id: str, operation_type: OperationType) -> List[FileOperationOut]:
+        """
+        Pobiera operacje dla danego ID datasetu i typu operacji
+
+        Args:
+            dataset_id: ID datasetu
+            operation_type: Typ operacji do filtrowania (import/export)
+
+        Returns:
+            Lista operacji danego typu
+        """
+        return self.get_operations_by_dataset_id(dataset_id, operation_type)
 
     def log_error(self, operation_uuid: str, dataset_id: str, error_type: str,
                   error_message: str, entity_str: str = None, context: Dict[str, Any] = None) -> bool:
