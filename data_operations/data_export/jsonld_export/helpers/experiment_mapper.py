@@ -103,4 +103,3 @@ class ExperimentJsonLdHelper(BaseJsonLdHelper):
 
         base_structure.update(properties)
         return base_structure
-

@@ -49,23 +49,23 @@ class TimeSeriesConverter(BaseEntityConverter[TimeSeriesIn]):
         Returns object_name (MinIO storage path) if found, None otherwise
         """
         try:
-            # files = self.file_service.get_files_by_dataset(dataset_id)
-            #
-            # for file_data in files:
-            #     # Check original_filename first
-            #     if file_data.original_filename and file_data.original_filename == filename:
-            #         print(f"✅ Found file '{filename}' by original_filename in dataset {dataset_id}: {file_data.filename}")
-            #         return file_data.filename  # This is the object_name in MinIO
-            #
-            #     # Check custom name (display name)
-            #     if file_data.name and file_data.name == filename:
-            #         print(f"✅ Found file '{filename}' by display name in dataset {dataset_id}: {file_data.filename}")
-            #         return file_data.filename
-            #
-            #     # Check filename (storage name) - extract just the filename part
-            #     if file_data.filename and file_data.filename.split('/')[-1] == filename:
-            #         print(f"✅ Found file '{filename}' by storage filename in dataset {dataset_id}: {file_data.filename}")
-            #         return file_data.filename
+            files = self.file_service.get_files_by_dataset(dataset_id)
+
+            for file_data in files:
+                # Check original_filename first
+                if file_data.original_filename and file_data.original_filename == filename:
+                    print(f"✅ Found file '{filename}' by original_filename in dataset {dataset_id}: {file_data.filename}")
+                    return file_data.filename  # This is the object_name in MinIO
+
+                # Check custom name (display name)
+                if file_data.name and file_data.name == filename:
+                    print(f"✅ Found file '{filename}' by display name in dataset {dataset_id}: {file_data.filename}")
+                    return file_data.filename
+
+                # Check filename (storage name) - extract just the filename part
+                if file_data.filename and file_data.filename.split('/')[-1] == filename:
+                    print(f"✅ Found file '{filename}' by storage filename in dataset {dataset_id}: {file_data.filename}")
+                    return file_data.filename
 
             print(f"❌ File '{filename}' not found in dataset {dataset_id} (searched original_filename, name, and filename)")
             return None
@@ -165,9 +165,8 @@ class TimeSeriesConverter(BaseEntityConverter[TimeSeriesIn]):
             return new_object_name
         else:
             # File not found - create default placeholder
-            # default_object_name = self._create_default_file(source, filename, dataset_id)
-            # return default_object_name
-            return None
+            default_object_name = self._create_default_file(source, filename, dataset_id)
+            return default_object_name
 
     def convert(self, json_entity: Dict[str, Any]) -> TimeSeriesIn:
         external_id = self._get_external_id(json_entity)
