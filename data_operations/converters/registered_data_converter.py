@@ -71,18 +71,18 @@ class RegisteredDataConverter(BaseEntityConverter[RegisteredDataIn]):
         """
         try:
             # Create text content with original source
-            text_content = f"Original registered data source: {source}\n"
-            text_content += f"This is a placeholder file created during import because the original file was not found in the dataset.\n"
-
-            # Generate object name for storage in recordings bucket
-            new_uuid = str(uuid4())
-            object_name = f"{new_uuid}/{filename}.txt"
-
-            # Upload to recordings bucket
-            self.recordings_minio_client.upload_file(object_name, text_content.encode('utf-8'), 'text/plain')
-
-            print(f"✅ Created default file for '{filename}' in recordings bucket: {object_name}")
-            return object_name
+            # text_content = f"Original registered data source: {source}\n"
+            # text_content += f"This is a placeholder file created during import because the original file was not found in the dataset.\n"
+            #
+            # # Generate object name for storage in recordings bucket
+            # new_uuid = str(uuid4())
+            # object_name = f"{new_uuid}/{filename}.txt"
+            #
+            # # Upload to recordings bucket
+            # self.recordings_minio_client.upload_file(object_name, text_content.encode('utf-8'), 'text/plain')
+            #
+            # print(f"✅ Created default file for '{filename}' in recordings bucket: {object_name}")
+            return filename
 
         except Exception as e:
             print(f"❌ Error creating default file for '{filename}': {e}")
@@ -147,7 +147,7 @@ class RegisteredDataConverter(BaseEntityConverter[RegisteredDataIn]):
         print(f"🔍 Processing source file: '{filename}' from '{source}'")
 
         # Try to find existing file
-        existing_object_name = self._find_file_in_dataset(filename, dataset_id)
+        existing_object_name = None # self._find_file_in_dataset(filename, dataset_id)
 
         if existing_object_name:
             # File found - copy it to new location
@@ -155,8 +155,9 @@ class RegisteredDataConverter(BaseEntityConverter[RegisteredDataIn]):
             return new_object_name
         else:
             # File not found - create default placeholder
-            default_object_name = self._create_default_file(source, filename, dataset_id)
-            return default_object_name
+            # default_object_name = self._create_default_file(source, filename, dataset_id)
+            # return default_object_name
+            return None
 
     def convert(self, json_entity: Dict[str, Any]) -> RegisteredDataIn:
         external_id = self._get_external_id(json_entity)
@@ -173,7 +174,8 @@ class RegisteredDataConverter(BaseEntityConverter[RegisteredDataIn]):
                 source = self._process_source_file(source, self._current_dataset_id)
             else:
                 print(f"⚠️ dataset_id not available, cannot process source file for RegisteredData '{clean_name_for_log}'")
-if not source:
+        
+        if not source:
             # Generuj source URL na podstawie external_id
             clean_id = remove_prefix(external_id) if external_id else "unknown"
             source = f"https://road.affectivese.org/datasets/InconsistencyDataset/{clean_id}.csv"
