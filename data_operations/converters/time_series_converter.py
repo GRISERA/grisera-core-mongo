@@ -343,7 +343,13 @@ class TimeSeriesConverter(BaseEntityConverter[TimeSeriesIn]):
                 return None
 
             saved_time_series_id = str(getattr(result, 'id', 'unknown'))
-            print(f"✅ TimeSeries saved with ID: {saved_time_series_id}")
+            print(f"🔗 Final TimeSeries mappings:")
+            print(f"   measure_id: {grisera_object.measure_id} -> {mapped_measure_id}")
+            print(
+                f"   observable_information_id: {grisera_object.observable_information_id} -> {mapped_observable_information_id}")
+            print(
+                f"   observable_information_ids: {grisera_object.observable_information_ids} -> {mapped_observable_information_ids}")
+            print(f"   TimeSeries saved with ID: {saved_time_series_id}")
 
             # Increment progress counter
             self.file_ops_service.increment_progress_counter(import_id, dataset_id, "time_series_count")
