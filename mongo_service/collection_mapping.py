@@ -3,6 +3,7 @@ from grisera import (
     ActivityExecutionPropertyIn,
     ActivityExecutionRelationIn,
 )
+from grisera import AdditionalParameterIn
 from grisera import (
     AppearanceOcclusionOut,
     AppearanceSomatotypeOut,
@@ -46,6 +47,7 @@ from grisera import (
     TimeSeriesPropertyIn,
     TimeSeriesRelationIn,
 )
+from grisera.file.file_model import FileIn
 from enum import Enum
 
 """
@@ -62,10 +64,13 @@ class Collections(str, Enum):
     DATASET = "dataset"
     ACTIVITY = "activities"
     ACTIVITY_EXECUTION = "activity_executions"
+    ADDITIONAL_PARAMETERS = "additional_parameters"
     APPEARANCE = "appearances"
     ARRANGEMENT = "arrangements"
     CHANNEL = "channels"
     EXPERIMENT = "experiments"
+    FILE_OPERATIONS = "file_operations"  # Nowa kolekcja dla operacji na plikach (import/export)
+    FILE_OPERATION_ERRORS = "file_operation_errors"  # Nowa kolekcja dla błędów operacji
     LIFE_ACTIVITY = "life_activities"
     MEASURE = "measures"
     MEASURE_NAME = "measure_names"
@@ -80,6 +85,8 @@ class Collections(str, Enum):
     REGISTERED_DATA = "registered_data"
     SCENARIO = "scenarios"
     TIME_SERIES = "timeSeries"
+    FILES = "files"
+    EXPORT_FILES = "export_files"
 
 
 SUPERCLASSES_TO_COLLECTION_NAMES = {
@@ -87,6 +94,7 @@ SUPERCLASSES_TO_COLLECTION_NAMES = {
     ActivityIn: Collections.ACTIVITY,
     ActivityExecutionPropertyIn: Collections.ACTIVITY_EXECUTION,
     ActivityExecutionRelationIn: Collections.ACTIVITY_EXECUTION,
+    AdditionalParameterIn: Collections.ADDITIONAL_PARAMETERS,
     AppearanceOcclusionIn: Collections.APPEARANCE,
     AppearanceOcclusionOut: Collections.APPEARANCE,
     AppearanceSomatotypeIn: Collections.APPEARANCE,
@@ -116,6 +124,7 @@ SUPERCLASSES_TO_COLLECTION_NAMES = {
     ScenarioOut: Collections.SCENARIO,
     TimeSeriesPropertyIn: Collections.TIME_SERIES,
     TimeSeriesRelationIn: Collections.TIME_SERIES,
+    FileIn: Collections.FILES,
 }
 
 
